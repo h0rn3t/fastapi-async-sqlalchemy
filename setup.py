@@ -12,9 +12,9 @@ with open("README.rst", encoding="utf-8") as fh:
 setup(
     name="fastapi-async-sqlalchemy",
     version=version,
-    url=" https://github.com/h0rn3t/fastapi-async-sqlalchemy.git",
+    url="https://github.com/h0rn3t/fastapi-async-sqlalchemy.git",
     project_urls={
-        "Code": " https://github.com/h0rn3t/fastapi-async-sqlalchemy",
+        "Code": "https://github.com/h0rn3t/fastapi-async-sqlalchemy",
         "Issue tracker": "https://github.com/h0rn3t/fastapi-async-sqlalchemy/issues",
     },
     license="MIT",
