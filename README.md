@@ -19,9 +19,6 @@ Based on FastAPI-SQLAlchemy
 
 ### Examples
 
-
-#### Usage inside of a route
-
 Note that the session object provided by ``db.session`` is based on the Python3.7+ ``ContextVar``. This means that
 each session is linked to the individual request context in which it was created.
 
