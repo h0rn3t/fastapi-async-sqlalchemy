@@ -22,6 +22,7 @@ setup(
     author_email="h0rn3t.null@gmail.com",
     description="SQLAlchemy middleware for FastAPI",
     long_description=long_description,
+    long_description_content_type="text/x-rst",
     packages=["fastapi_async_sqlalchemy"],
     package_data={"fastapi_async_sqlalchemy": ["py.typed"]},
     zip_safe=False,
