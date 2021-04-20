@@ -1,6 +1,8 @@
 # from unittest.mock import Mock, patch
+
 import pytest
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
+from sqlalchemy.ext.asyncio import create_async_engine
+from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from fastapi_async_sqlalchemy.exceptions import MissingSessionError, SessionNotInitialisedError
