@@ -34,7 +34,10 @@ from sqlalchemy import column
 from sqlalchemy import table
 
 app = FastAPI()
-app.add_middleware(SQLAlchemyMiddleware, db_url="postgresql+asyncpg://user:user@192.168.88.200:5432/primary_db")
+app.add_middleware(
+    SQLAlchemyMiddleware, 
+    db_url="postgresql+asyncpg://user:user@192.168.88.200:5432/primary_db"
+)
 
 foo = table("ms_files", column("id"))
 
