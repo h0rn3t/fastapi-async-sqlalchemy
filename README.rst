@@ -68,7 +68,7 @@ Sometimes it is useful to be able to access the database outside the context of 
 
     app = FastAPI()
 
-    app.add_middleware(DBSessionMiddleware, db_url="sqlite://")
+    app.add_middleware(DBSessionMiddleware, db_url="sqlite+aiosqlite://")
 
 
     @app.on_event('startup')
