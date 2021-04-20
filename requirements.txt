@@ -21,8 +21,8 @@ pycodestyle==2.5.0
 pydantic==1.8.1
 pyflakes==2.1.1
 pyparsing==2.4.2
-pytest==5.2.2
-pytest-cov==2.8.1
+pytest==6.2.3
+pytest-cov==2.11.1
 PyYAML==5.3.1
 regex==2020.2.20
 requests==2.22.0

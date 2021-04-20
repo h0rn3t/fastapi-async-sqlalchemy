@@ -36,7 +36,7 @@ class SQLAlchemyMiddleware(BaseHTTPMiddleware):
             engine = create_async_engine(db_url, **engine_args)
         else:
             engine = custom_engine
-        _Session = sessionmaker(bind=engine, class_=AsyncSession, **session_args)
+        _Session = sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
 
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint):
         async with db(commit_on_exit=self.commit_on_exit):
@@ -84,6 +84,17 @@ class DBSession(metaclass=DBSessionMeta):
             await sess.commit()
 
         await sess.close()
+        _session.reset(self.token)
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        sess = _session.get()
+        if exc_type is not None:
+            sess.rollback()
+
+        if self.commit_on_exit:
+            sess.commit()
+
+        sess.close()
         _session.reset(self.token)
 
 
