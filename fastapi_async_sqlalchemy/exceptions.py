@@ -8,7 +8,7 @@ class MissingSessionError(Exception):
         a context manager e.g.:
 
         with db():
-            db.session.query(User).all()
+            await db.session.execute(foo.select()).fetchall()
         """
 
         super().__init__(msg)
