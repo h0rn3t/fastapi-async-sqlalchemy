@@ -16,14 +16,14 @@ Based on FastAPI-SQLAlchemy
   pip install fastapi-async-sqlalchemy
 ```
 
-### Usage
-
 
 ### Examples
 
 
-Usage inside of a route
+###Usage inside of a route
 
+Note that the session object provided by ``db.session`` is based on the Python3.7+ ``ContextVar``. This means that
+each session is linked to the individual request context in which it was created.
 
 ```python
 
@@ -47,10 +47,9 @@ Usage inside of a route
         return users
 ```
 
-Note that the session object provided by ``db.session`` is based on the Python3.7+ ``ContextVar``. This means that
-each session is linked to the individual request context in which it was created.
 
-### Usage outside of a route
+###Usage outside of a route
+
 Sometimes it is useful to be able to access the database outside the context of a request, such as in scheduled tasks which run in the background:
 
 ```python
