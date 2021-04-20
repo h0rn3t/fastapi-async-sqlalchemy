@@ -1,34 +1,32 @@
-FastAPI-Async-SQLAlchemy
-==================
+# FastAPI Async SQLAlchemy middleware
 
-.. image:: https://github.com/h0rn3t/fastapi-async-sqlalchemy/workflows/ci/badge.svg
-    :target: https://github.com/h0rn3t/fastapi-async-sqlalchemy/actions
-.. image:: https://codecov.io/gh/h0rn3t/fastapi-async-sqlalchemy/branch/master/graph/badge.svg
-    :target: https://codecov.io/gh/h0rn3t/fastapi-async-sqlalchemy
-.. image:: https://img.shields.io/pypi/v/fastapi_async_sqlalchemy?color=blue
-    :target: https://pypi.org/project/fastapi-async-sqlalchemy
+[![ci](https://github.com/h0rn3t/fastapi-async-sqlalchemy/workflows/ci/badge.svg)](https://github.com/h0rn3t/fastapi-async-sqlalchemy/workflows/ci/badge.svg)
+[![codecov](https://codecov.io/gh/h0rn3t/fastapi-async-sqlalchemy/branch/master/graph/badge.svg)](https://codecov.io/gh/h0rn3t/fastapi-async-sqlalchemy/branch/master/graph/badge.svg)
+[![License](https://img.shields.io/npm/l/xxtea-node.svg)](http://opensource.org/licenses/MIT)
+[![pip](https://img.shields.io/pypi/v/fastapi_async_sqlalchemy?color=blue)](https://img.shields.io/pypi/v/fastapi_async_sqlalchemy?color=blue)
 
+### Description
+
+FastAPI-Async-SQLAlchemy provides a simple integration between FastAPI_ and SQLAlchemy_ in async way. It gives access to useful helpers to facilitate the completion of common tasks. Based on FastAPI-SQLAlchemy
+
+### Install
+
+```bash
+  pip install fastapi-async-sqlalchemy
+```
+
+### Usage
 
 FastAPI-Async-SQLAlchemy provides a simple integration between FastAPI_ and SQLAlchemy_ in async way. It gives access to useful helpers to facilitate the completion of common tasks.
 Based on FastAPI-SQLAlchemy
 
-Installing
-----------
+### Examples
 
-Install and update using pip_:
-
-.. code-block:: text
-
-  $ pip install fastapi-async-sqlalchemy
-
-
-Examples
---------
 
 Usage inside of a route
-^^^^^^^^^^^^^^^^^^^^^^^
 
-.. code-block:: python
+
+```python
 
     from fastapi import FastAPI
     from fastapi_async_sqlalchemy import SQLAlchemyMiddleware  # middleware helper
@@ -48,16 +46,15 @@ Usage inside of a route
         users = db.session.query(User).all()
 
         return users
+```
 
 Note that the session object provided by ``db.session`` is based on the Python3.7+ ``ContextVar``. This means that
 each session is linked to the individual request context in which it was created.
 
-Usage outside of a route
-^^^^^^^^^^^^^^^^^^^^^^^^
-
+### Usage outside of a route
 Sometimes it is useful to be able to access the database outside the context of a request, such as in scheduled tasks which run in the background:
 
-.. code-block:: python
+```python
 
     import pytz
     from apscheduler.schedulers.asyncio import AsyncIOScheduler  # other schedulers are available
@@ -94,8 +91,4 @@ Sometimes it is useful to be able to access the database outside the context of 
         # no longer able to access a database session once the db() context manager has ended
 
         return users
-
-
-.. _FastAPI: https://github.com/tiangolo/fastapi
-.. _SQLAlchemy: https://github.com/pallets/flask-sqlalchemy
-.. _pip: https://pip.pypa.io/en/stable/quickstart/
+```
