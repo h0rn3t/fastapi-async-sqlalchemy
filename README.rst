@@ -1,11 +1,11 @@
 FastAPI-SQLAlchemy-Async
 ==================
 
-.. image:: https://github.com/mfreeborn/fastapi-sqlalchemy/workflows/ci/badge.svg
-    :target: https://github.com/mfreeborn/fastapi-async-sqlalchemy/actions
-.. image:: https://codecov.io/gh/mfreeborn/fastapi-sqlalchemy/branch/master/graph/badge.svg
-    :target: https://codecov.io/gh/mfreeborn/fastapi-async-sqlalchemy
-.. image:: https://img.shields.io/pypi/v/fastapi_sqlalchemy?color=blue
+.. image:: https://github.com/h0rn3t/fastapi-async-sqlalchemy/workflows/ci/badge.svg
+    :target: https://github.com/h0rn3t/fastapi-async-sqlalchemy/actions
+.. image:: https://codecov.io/gh/h0rn3t/fastapi-async-sqlalchemy/branch/master/graph/badge.svg
+    :target: https://codecov.io/gh/h0rn3t/fastapi-async-sqlalchemy
+.. image:: https://img.shields.io/pypi/v/fastapi_async_sqlalchemy?color=blue
     :target: https://pypi.org/project/fastapi-async-sqlalchemy
 
 
