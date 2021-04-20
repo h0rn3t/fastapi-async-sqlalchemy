@@ -1,4 +1,4 @@
-FastAPI-SQLAlchemy-Async
+FastAPI-Async-SQLAlchemy
 ==================
 
 .. image:: https://github.com/h0rn3t/fastapi-async-sqlalchemy/workflows/ci/badge.svg
@@ -9,7 +9,7 @@ FastAPI-SQLAlchemy-Async
     :target: https://pypi.org/project/fastapi-async-sqlalchemy
 
 
-FastAPI-SQLAlchemy-Async provides a simple integration between FastAPI_ and SQLAlchemy_ in async way. It gives access to useful helpers to facilitate the completion of common tasks.
+FastAPI-Async-SQLAlchemy provides a simple integration between FastAPI_ and SQLAlchemy_ in async way. It gives access to useful helpers to facilitate the completion of common tasks.
 Based on FastAPI-SQLAlchemy
 
 Installing
