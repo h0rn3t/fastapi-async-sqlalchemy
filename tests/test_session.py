@@ -1,6 +1,5 @@
-from unittest.mock import Mock, patch
+# from unittest.mock import Mock, patch
 import pytest
-from sqlalchemy.orm import Session
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from starlette.middleware.base import BaseHTTPMiddleware
 
@@ -111,7 +110,7 @@ async def test_db_context_session_args(app, db, SQLAlchemyMiddleware, commit_on_
     session_args = {"expire_on_commit": False}
     async with db(session_args=session_args):
         db.session
-        #assert db.session.expire_on_commit
+        # assert db.session.expire_on_commit
 
 
 @pytest.mark.asyncio
