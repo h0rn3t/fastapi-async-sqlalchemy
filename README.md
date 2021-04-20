@@ -20,7 +20,7 @@ Based on FastAPI-SQLAlchemy
 ### Examples
 
 
-###Usage inside of a route
+### Usage inside of a route
 
 Note that the session object provided by ``db.session`` is based on the Python3.7+ ``ContextVar``. This means that
 each session is linked to the individual request context in which it was created.
@@ -48,7 +48,7 @@ each session is linked to the individual request context in which it was created
 ```
 
 
-###Usage outside of a route
+### Usage outside of a route
 
 Sometimes it is useful to be able to access the database outside the context of a request, such as in scheduled tasks which run in the background:
 
