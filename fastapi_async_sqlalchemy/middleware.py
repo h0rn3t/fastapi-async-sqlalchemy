@@ -25,17 +25,18 @@ class SQLAlchemyMiddleware(BaseHTTPMiddleware):
         commit_on_exit: bool = False,
     ):
         super().__init__(app)
-        global _Session
-        engine_args = engine_args or {}
         self.commit_on_exit = commit_on_exit
-
+        engine_args = engine_args or {}
         session_args = session_args or {}
+
         if not custom_engine and not db_url:
             raise ValueError("You need to pass a db_url or a custom_engine parameter.")
         if not custom_engine:
             engine = create_async_engine(db_url, **engine_args)
         else:
             engine = custom_engine
+
+        global _Session
         _Session = sessionmaker(engine, expire_on_commit=False, class_=AsyncSession, **session_args)
 
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint):
