@@ -1,6 +1,5 @@
 from contextvars import ContextVar
 from typing import Dict, Optional, Union
-
 from sqlalchemy.engine import Engine
 from sqlalchemy.engine.url import URL
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
@@ -37,7 +36,7 @@ class SQLAlchemyMiddleware(BaseHTTPMiddleware):
             engine = create_async_engine(db_url, **engine_args)
         else:
             engine = custom_engine
-        _Session = sessionmaker(bind=engine, **session_args)
+        _Session = sessionmaker(bind=engine, class_=AsyncSession, **session_args)
 
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint):
         with db(commit_on_exit=self.commit_on_exit):

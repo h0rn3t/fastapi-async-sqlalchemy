@@ -1,8 +1,7 @@
 from unittest.mock import Mock, patch
-
 import pytest
-from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from fastapi_async_sqlalchemy.exceptions import MissingSessionError, SessionNotInitialisedError
@@ -22,20 +21,19 @@ def test_init_required_args(app, SQLAlchemyMiddleware):
     assert exc_info.value.args[0] == "You need to pass a db_url or a custom_engine parameter."
 
 
-def test_init_required_args_custom_engine(app, db, SQLAlchemyMiddleware):
-    custom_engine = create_engine(db_url)
-    SQLAlchemyMiddleware(app, custom_engine=custom_engine)
+#def test_init_required_args_custom_engine(app, db, SQLAlchemyMiddleware):
+#    custom_engine = create_async_engine(db_url)
+#    SQLAlchemyMiddleware(app, custom_engine=custom_engine)
 
 
-def test_init_correct_optional_args(app, db, SQLAlchemyMiddleware):
+async def test_init_correct_optional_args(app, db, SQLAlchemyMiddleware):
     engine_args = {"echo": True}
     session_args = {"expire_on_commit": False}
 
     SQLAlchemyMiddleware(app, db_url, engine_args=engine_args, session_args=session_args)
 
-    with db():
+    async with db():
         assert not db.session.expire_on_commit
-
         engine = db.session.bind
         assert engine.echo
 
@@ -52,7 +50,7 @@ def test_inside_route(app, client, db, SQLAlchemyMiddleware):
 
     @app.get("/")
     def test_get():
-        assert isinstance(db.session, Session)
+        assert isinstance(db.session, AsyncSession)
 
     client.get("/")
 
@@ -70,7 +68,7 @@ def test_outside_of_route(app, db, SQLAlchemyMiddleware):
     app.add_middleware(SQLAlchemyMiddleware, db_url=db_url)
 
     with db():
-        assert isinstance(db.session, Session)
+        assert isinstance(db.session, AsyncSession)
 
 
 def test_outside_of_route_without_middleware_fails(db):
@@ -94,7 +92,7 @@ def test_db_context_temporary_session_args(app, db, SQLAlchemyMiddleware):
 
     session_args = {}
     with db(session_args=session_args):
-        assert isinstance(db.session, Session)
+        assert isinstance(db.session, AsyncSession)
 
         assert db.session.expire_on_commit
 
