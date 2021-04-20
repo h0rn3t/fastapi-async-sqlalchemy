@@ -38,7 +38,7 @@ Usage inside of a route
 
     app = FastAPI()
 
-    app.add_middleware(SQLAlchemyMiddleware, db_url="sqlite://")
+    app.add_middleware(SQLAlchemyMiddleware, db_url="sqlite+aiosqlite://")
 
     # once the middleware is applied, any route can then access the database session 
     # from the global ``db``
