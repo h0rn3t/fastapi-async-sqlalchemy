@@ -20,7 +20,7 @@ setup(
     license="MIT",
     author="Eugene Shershen",
     author_email="h0rn3t.null@gmail.com",
-    description="Adds asynchronous SQLAlchemy support to FastAPI",
+    description="SQLAlchemy middleware for FastAPI",
     long_description=long_description,
     packages=["fastapi_async_sqlalchemy"],
     package_data={"fastapi_async_sqlalchemy": ["py.typed"]},
