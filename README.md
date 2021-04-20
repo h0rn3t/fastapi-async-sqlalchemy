@@ -20,73 +20,40 @@ Based on FastAPI-SQLAlchemy
 ### Examples
 
 
-### Usage inside of a route
+#### Usage inside of a route
 
 Note that the session object provided by ``db.session`` is based on the Python3.7+ ``ContextVar``. This means that
 each session is linked to the individual request context in which it was created.
 
 ```python
 
-    from fastapi import FastAPI
-    from fastapi_async_sqlalchemy import SQLAlchemyMiddleware  # middleware helper
-    from fastapi_async_sqlalchemy import db  # an object to provide global access to a database session
+from fastapi import FastAPI
+from fastapi_async_sqlalchemy import SQLAlchemyMiddleware  # middleware helper
+from fastapi_async_sqlalchemy import db  # an object to provide global access to a database session
+from sqlalchemy import column
+from sqlalchemy import table
 
-    from app.models import User
+app = FastAPI()
+app.add_middleware(SQLAlchemyMiddleware, db_url="postgresql+asyncpg://user:user@192.168.88.200:5432/primary_db")
 
-    app = FastAPI()
-
-    app.add_middleware(SQLAlchemyMiddleware, db_url="sqlite+aiosqlite://")
-
-    # once the middleware is applied, any route can then access the database session 
-    # from the global ``db``
-
-    @app.get("/users")
-    def get_users():
-        users = db.session.query(User).all()
-
-        return users
-```
+foo = table("ms_files", column("id"))
 
 
-### Usage outside of a route
-
-Sometimes it is useful to be able to access the database outside the context of a request, such as in scheduled tasks which run in the background:
-
-```python
-
-    import pytz
-    from apscheduler.schedulers.asyncio import AsyncIOScheduler  # other schedulers are available
-    from fastapi import FastAPI
-    from fastapi_async_sqlalchemy import db
-
-    from app.models import User, UserCount
-
-    app = FastAPI()
-
-    app.add_middleware(DBSessionMiddleware, db_url="sqlite+aiosqlite://")
+@app.get("/")
+async def get_files():
+    result = await db.session.execute(foo.select())
+    return result.fetchall()
 
 
-    @app.on_event('startup')
-    async def startup_event():
-        scheduler = AsyncIOScheduler(timezone=pytz.utc)
-        scheduler.start()
-        scheduler.add_job(count_users_task, "cron", hour=0)  # runs every night at midnight
+@app.get("/db_context")
+async def db_context():
+    async with db():
+        result = await db.session.execute(foo.select())
+        return result.fetchall()
 
 
-    def count_users_task():
-        """Count the number of users in the database and save it into the user_counts table."""
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8002)
 
-        # we are outside of a request context, therefore we cannot rely on ``DBSessionMiddleware``
-        # to create a database session for us. Instead, we can use the same ``db`` object and 
-        # use it as a context manager, like so:
-
-        with db():
-            user_count = db.session.query(User).count()
-
-            db.session.add(UserCount(user_count))
-            db.session.commit()
-        
-        # no longer able to access a database session once the db() context manager has ended
-
-        return users
 ```
