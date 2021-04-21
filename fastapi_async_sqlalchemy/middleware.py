@@ -68,9 +68,6 @@ class DBSession(metaclass=DBSessionMeta):
         self.session_args = session_args or {}
         self.commit_on_exit = commit_on_exit
 
-    async def __anext__(self):
-        raise StopAsyncIteration
-
     async def __aenter__(self):
         if not isinstance(_Session, sessionmaker):
             raise SessionNotInitialisedError
