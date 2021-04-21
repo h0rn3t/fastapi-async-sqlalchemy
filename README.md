@@ -25,8 +25,8 @@ each session is linked to the individual request context in which it was created
 ```python
 
 from fastapi import FastAPI
-from fastapi_async_sqlalchemy import SQLAlchemyMiddleware  # middleware helper
-from fastapi_async_sqlalchemy import db  # an object to provide global access to a database session
+from fastapi_async_sqlalchemy import SQLAlchemyMiddleware
+from fastapi_async_sqlalchemy import db  # provide access to a database session
 from sqlalchemy import column
 from sqlalchemy import table
 
