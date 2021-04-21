@@ -4,6 +4,7 @@
 [![codecov](https://codecov.io/gh/h0rn3t/fastapi-async-sqlalchemy/branch/main/graph/badge.svg?token=F4NJ34WKPY)](https://codecov.io/gh/h0rn3t/fastapi-async-sqlalchemy)
 [![License](https://img.shields.io/npm/l/xxtea-node.svg)](http://opensource.org/licenses/MIT)
 [![pip](https://img.shields.io/pypi/v/fastapi_async_sqlalchemy?color=blue)](https://pypi.org/project/fastapi-async-sqlalchemy/)
+[![Downloads](https://pepy.tech/badge/fastapi-async-sqlalchemy/week)](https://pepy.tech/project/fastapi-async-sqlalchemy)
 
 ### Description
 
