@@ -7,7 +7,7 @@ class MissingSessionError(Exception):
         or you need to manually create a session context by using a `db` instance as
         a context manager e.g.:
 
-        with db():
+        async with db():
             await db.session.execute(foo.select()).fetchall()
         """
 
