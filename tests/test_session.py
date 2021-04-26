@@ -103,7 +103,7 @@ async def test_db_context_session_args(app, db, SQLAlchemyMiddleware, commit_on_
 
     session_args = {}
 
-    async with db(session_args=session_args):
+    async with db(session_args=session_args, commit_on_exit=True):
         assert isinstance(db.session, AsyncSession)
 
         # assert db.session.expire_on_commit
