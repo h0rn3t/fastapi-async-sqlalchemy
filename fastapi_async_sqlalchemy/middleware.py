@@ -63,7 +63,7 @@ class DBSessionMeta(type):
 
 
 class DBSession(metaclass=DBSessionMeta):
-    def __init__(self, session_args: Dict = None, commit_on_exit: bool = False):
+    def __init__(self, session_args: Dict = None, commit_on_exit: bool = True):
         self.token = None
         self.session_args = session_args or {}
         self.commit_on_exit = commit_on_exit
