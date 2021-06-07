@@ -18,7 +18,7 @@ pathspec==0.7.0
 pluggy==0.13.0
 py>=1.9.0
 pycodestyle==2.5.0
-pydantic==1.8.1
+pydantic==1.8.2
 pyflakes==2.1.1
 pyparsing==2.4.2
 pytest==6.2.3
