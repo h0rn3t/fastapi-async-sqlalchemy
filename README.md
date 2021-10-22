@@ -9,7 +9,7 @@
 
 ### Description
 
-FastAPI-Async-SQLAlchemy provides middleware for FastAPI and SQLAlchemy using async AsyncSession and async engine. 
+FastAPI-Async-SQLAlchemy provides middleware for FastAPI and SQLAlchemy using async AsyncSession and async engine.
 Based on FastAPI-SQLAlchemy
 
 ### Install
@@ -34,7 +34,7 @@ from sqlalchemy import table
 
 app = FastAPI()
 app.add_middleware(
-    SQLAlchemyMiddleware, 
+    SQLAlchemyMiddleware,
     db_url="postgresql+asyncpg://user:user@192.168.88.200:5432/primary_db"
 )
 
