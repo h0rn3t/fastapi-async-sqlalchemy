@@ -27,7 +27,7 @@ PyYAML>=5.4
 regex==2020.2.20
 requests==2.22.0
 six==1.12.0
-SQLAlchemy==1.4.11
+SQLAlchemy>=1.4.11
 asyncpg==0.22.0
 aiosqlite==0.17.0
 sqlparse==0.4.2
