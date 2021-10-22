@@ -11,7 +11,7 @@ from starlette.types import ASGIApp
 
 from fastapi_async_sqlalchemy.exceptions import MissingSessionError, SessionNotInitialisedError
 
-_Session: sessionmaker = None
+_Session: Optional[sessionmaker] = None
 _session: ContextVar[Optional[AsyncSession]] = ContextVar("_session", default=None)
 
 
@@ -42,8 +42,7 @@ class SQLAlchemyMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint):
         async with db(commit_on_exit=self.commit_on_exit):
-            response = await call_next(request)
-        return response
+            return await call_next(request)
 
 
 class DBSessionMeta(type):
