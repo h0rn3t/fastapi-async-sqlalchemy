@@ -9,7 +9,7 @@
 
 ### Description
 
-Provides middleware for FastAPI and SQLAlchemy using AsyncSession and async engine.
+Provides SQLAlchemy middleware for FastAPI using AsyncSession and async engine.
 
 ### Install
 
