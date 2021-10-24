@@ -9,7 +9,7 @@
 
 ### Description
 
-FastAPI-Async-SQLAlchemy provides middleware for FastAPI and SQLAlchemy using async AsyncSession and async engine.
+Provides middleware for FastAPI and SQLAlchemy using async AsyncSession and async engine.
 
 ### Install
 
