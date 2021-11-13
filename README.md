@@ -1,4 +1,4 @@
-# FastAPI Async SQLAlchemy middleware
+# SQLAlchemy FastAPI middleware
 
 [![ci](https://github.com/h0rn3t/fastapi-async-sqlalchemy/workflows/ci/badge.svg)](https://github.com/h0rn3t/fastapi-async-sqlalchemy/workflows/ci/badge.svg)
 [![codecov](https://codecov.io/gh/h0rn3t/fastapi-async-sqlalchemy/branch/main/graph/badge.svg?token=F4NJ34WKPY)](https://codecov.io/gh/h0rn3t/fastapi-async-sqlalchemy)
@@ -9,8 +9,7 @@
 
 ### Description
 
-FastAPI-Async-SQLAlchemy provides middleware for FastAPI and SQLAlchemy using async AsyncSession and async engine.
-Based on FastAPI-SQLAlchemy
+Provides SQLAlchemy middleware for FastAPI using AsyncSession and async engine.
 
 ### Install
 
