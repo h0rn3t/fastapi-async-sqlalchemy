@@ -40,6 +40,10 @@ async def test_init_correct_optional_args(app, db, SQLAlchemyMiddleware):
         engine = db.session.bind
         assert engine.echo
 
+    async with db() as db_ctx:
+        engine = db_ctx.session.bind
+        assert engine.echo
+
 
 @pytest.mark.asyncio
 def test_init_incorrect_optional_args(app, SQLAlchemyMiddleware):

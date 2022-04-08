@@ -72,7 +72,7 @@ class DBSession(metaclass=DBSessionMeta):
             raise SessionNotInitialisedError
 
         self.token = _session.set(_Session(**self.session_args))
-        return self.token
+        return type(self)
 
     async def __aexit__(self, exc_type, exc_value, traceback):
         session = _session.get()
