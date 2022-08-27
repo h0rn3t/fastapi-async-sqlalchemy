@@ -36,21 +36,34 @@ app.add_middleware(
     SQLAlchemyMiddleware,
     db_url="postgresql+asyncpg://user:user@192.168.88.200:5432/primary_db"
 )
+# once the middleware is applied, any route can then access the database session
+# from the global ``db``
 
 foo = table("ms_files", column("id"))
 
-
+# Usage inside of a route
 @app.get("/")
 async def get_files():
     result = await db.session.execute(foo.select())
     return result.fetchall()
 
-
-@app.get("/db_context")
-async def db_context():
+async def get_db_fetch():
+    # It uses the same ``db`` object and use it as a context manager:
     async with db():
         result = await db.session.execute(foo.select())
         return result.fetchall()
+
+# Usage inside of a route using a db context
+@app.get("/db_context")
+async def db_context():
+    return await get_db_fetch()
+
+# Usage outside of a route using a db context
+@app.on_event("startup")
+async def on_startup():
+    # We are outside of a request context, therefore we cannot rely on ``SQLAlchemyMiddleware``
+    # to create a database session for us.
+    result = await get_db_fetch()
 
 
 if __name__ == "__main__":
