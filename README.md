@@ -34,7 +34,17 @@ from sqlalchemy import table
 app = FastAPI()
 app.add_middleware(
     SQLAlchemyMiddleware,
-    db_url="postgresql+asyncpg://user:user@192.168.88.200:5432/primary_db"
+    db_url="postgresql+asyncpg://user:user@192.168.88.200:5432/primary_db",
+    engine_args={              # engine arguments example
+        "echo": True,          # print all SQL statements
+        "pool_pre_ping": True, # feature will normally emit SQL equivalent to “SELECT 1” each time a connection is checked out from the pool
+        "pool_size": 5,        # number of connections to keep open at a time
+        "max_overflow": 10,    # number of connections to allow to be opened above pool_size
+        "connect_args": {
+            "prepared_statement_cache_size": 0,  # disable prepared statement cache
+            "statement_cache_size": 0,           # disable statement cache   
+        },
+    },
 )
 # once the middleware is applied, any route can then access the database session
 # from the global ``db``
