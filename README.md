@@ -43,7 +43,7 @@ app.add_middleware(
         "max_overflow": 10,    # number of connections to allow to be opened above pool_size
         "connect_args": {
             "prepared_statement_cache_size": 0,  # disable prepared statement cache
-            "statement_cache_size": 0,           # disable statement cache   
+            "statement_cache_size": 0,           # disable statement cache
         },
     },
 )

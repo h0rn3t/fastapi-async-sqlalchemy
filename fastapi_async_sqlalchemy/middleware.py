@@ -68,7 +68,7 @@ class DBSession(metaclass=DBSessionMeta):
         self.commit_on_exit = commit_on_exit
 
     async def _init_session(self):
-        self.token = _session.set(_Session(**self.session_args))    # type: ignore
+        self.token = _session.set(_Session(**self.session_args))  # type: ignore
 
     async def __aenter__(self):
         if not isinstance(_Session, sessionmaker):
