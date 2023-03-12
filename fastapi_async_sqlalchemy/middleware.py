@@ -67,14 +67,11 @@ class DBSession(metaclass=DBSessionMeta):
         self.session_args = session_args or {}
         self.commit_on_exit = commit_on_exit
 
-    async def _init_session(self):
-        self.token = _session.set(_Session(**self.session_args))  # type: ignore
-
     async def __aenter__(self):
         if not isinstance(_Session, sessionmaker):
             raise SessionNotInitialisedError
 
-        await self._init_session()
+        self.token = _session.set(_Session(**self.session_args))  # type: ignore
         return type(self)
 
     async def __aexit__(self, exc_type, exc_value, traceback):

@@ -1,4 +1,5 @@
 # from unittest.mock import Mock, patch
+import sys
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
@@ -50,7 +51,16 @@ def test_init_incorrect_optional_args(app, SQLAlchemyMiddleware):
     with pytest.raises(TypeError) as exc_info:
         SQLAlchemyMiddleware(app, db_url=db_url, invalid_args="test")
 
-    assert exc_info.value.args[0] == "__init__() got an unexpected keyword argument 'invalid_args'"
+    if sys.version_info >= (3, 10):
+        assert (
+            exc_info.value.args[0]
+            == "SQLAlchemyMiddleware.__init__() got an unexpected keyword argument "
+            "'invalid_args'"
+        )
+    else:
+        assert (
+            exc_info.value.args[0] == "__init__() got an unexpected keyword argument 'invalid_args'"
+        )
 
 
 @pytest.mark.asyncio

@@ -1,11 +1,11 @@
 exclude: (alembic|build|dist|docker|esign|kubernetes|migrations)
 
 default_language_version:
-  python: python3.7
+  python: python3.8
 
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v4.0.1
+    rev: v4.4.0
     hooks:
       - id: end-of-file-fixer
       - id: trailing-whitespace
@@ -26,7 +26,7 @@ repos:
           - --remove-duplicate-keys
           - --remove-unused-variables
   - repo: https://github.com/PyCQA/isort
-    rev: 5.9.3
+    rev: 5.12.0
     hooks:
       - id: isort
   - repo: https://github.com/psf/black
