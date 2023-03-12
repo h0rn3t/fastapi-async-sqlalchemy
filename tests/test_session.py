@@ -11,20 +11,21 @@ db_url = "sqlite+aiosqlite://"
 
 
 @pytest.mark.asyncio
-def test_init(app, SQLAlchemyMiddleware):
+async def test_init(app, SQLAlchemyMiddleware):
     mw = SQLAlchemyMiddleware(app, db_url=db_url)
     assert isinstance(mw, BaseHTTPMiddleware)
 
 
 @pytest.mark.asyncio
-def test_init_required_args(app, SQLAlchemyMiddleware):
+async def test_init_required_args(app, SQLAlchemyMiddleware):
     with pytest.raises(ValueError) as exc_info:
         SQLAlchemyMiddleware(app)
 
     assert exc_info.value.args[0] == "You need to pass a db_url or a custom_engine parameter."
 
 
-def test_init_required_args_custom_engine(app, db, SQLAlchemyMiddleware):
+@pytest.mark.asyncio
+async def test_init_required_args_custom_engine(app, db, SQLAlchemyMiddleware):
     custom_engine = create_async_engine(db_url)
     SQLAlchemyMiddleware(app, custom_engine=custom_engine)
 
@@ -47,7 +48,7 @@ async def test_init_correct_optional_args(app, db, SQLAlchemyMiddleware):
 
 
 @pytest.mark.asyncio
-def test_init_incorrect_optional_args(app, SQLAlchemyMiddleware):
+async def test_init_incorrect_optional_args(app, SQLAlchemyMiddleware):
     with pytest.raises(TypeError) as exc_info:
         SQLAlchemyMiddleware(app, db_url=db_url, invalid_args="test")
 
@@ -64,7 +65,7 @@ def test_init_incorrect_optional_args(app, SQLAlchemyMiddleware):
 
 
 @pytest.mark.asyncio
-def test_inside_route(app, client, db, SQLAlchemyMiddleware):
+async def test_inside_route(app, client, db, SQLAlchemyMiddleware):
     app.add_middleware(SQLAlchemyMiddleware, db_url=db_url)
 
     @app.get("/")
@@ -75,7 +76,7 @@ def test_inside_route(app, client, db, SQLAlchemyMiddleware):
 
 
 @pytest.mark.asyncio
-def test_inside_route_without_middleware_fails(app, client, db):
+async def test_inside_route_without_middleware_fails(app, client, db):
     @app.get("/")
     def test_get():
         with pytest.raises(SessionNotInitialisedError):
@@ -103,7 +104,7 @@ async def test_outside_of_route_without_middleware_fails(db):
 
 
 @pytest.mark.asyncio
-def test_outside_of_route_without_context_fails(app, db, SQLAlchemyMiddleware):
+async def test_outside_of_route_without_context_fails(app, db, SQLAlchemyMiddleware):
     app.add_middleware(SQLAlchemyMiddleware, db_url=db_url)
 
     with pytest.raises(MissingSessionError):
