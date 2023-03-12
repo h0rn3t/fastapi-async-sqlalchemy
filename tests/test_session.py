@@ -115,8 +115,8 @@ async def test_outside_of_route_without_context_fails(app, db, SQLAlchemyMiddlew
 async def test_init_session(app, db, SQLAlchemyMiddleware):
     app.add_middleware(SQLAlchemyMiddleware, db_url=db_url)
 
-    await db()._init_session()
-    assert isinstance(db.session, AsyncSession)
+    async with db():
+        assert isinstance(db.session, AsyncSession)
 
 
 @pytest.mark.parametrize("commit_on_exit", [True, False])
