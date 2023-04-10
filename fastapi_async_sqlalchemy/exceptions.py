@@ -1,5 +1,5 @@
 class MissingSessionError(Exception):
-    """Excetion raised for when the user tries to access a database session before it is created."""
+    """Exception raised for when the user tries to access a database session before it is created."""
 
     def __init__(self):
         msg = """
