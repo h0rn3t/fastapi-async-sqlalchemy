@@ -3,7 +3,7 @@ from typing import Dict, Optional, Union
 
 from sqlalchemy.engine import Engine
 from sqlalchemy.engine.url import URL
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from sqlalchemy.orm import sessionmaker
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.requests import Request
@@ -38,7 +38,7 @@ class SQLAlchemyMiddleware(BaseHTTPMiddleware):
             engine = custom_engine
 
         global _Session
-        _Session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False, **session_args)
+        _Session = async_sessionmaker(engine, expire_on_commit=False, **session_args)
 
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint):
         async with db(commit_on_exit=self.commit_on_exit):

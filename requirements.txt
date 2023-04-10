@@ -28,8 +28,8 @@ regex==2020.2.20
 requests>=2.22.0
 httpx>=0.20.0
 six==1.12.0
-SQLAlchemy>=1.4.11
-asyncpg>=0.22.0
+SQLAlchemy>=2.0.0
+asyncpg>=0.27.0
 aiosqlite==0.18.0
 sqlparse==0.4.2
 starlette>=0.13.6
