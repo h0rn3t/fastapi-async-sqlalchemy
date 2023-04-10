@@ -4,14 +4,13 @@ from typing import Dict, Optional, Union
 from sqlalchemy.engine import Engine
 from sqlalchemy.engine.url import URL
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
-from sqlalchemy.orm import sessionmaker
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.requests import Request
 from starlette.types import ASGIApp
 
 from fastapi_async_sqlalchemy.exceptions import MissingSessionError, SessionNotInitialisedError
 
-_Session: Optional[sessionmaker] = None
+_Session: Optional[async_sessionmaker] = None
 _session: ContextVar[Optional[AsyncSession]] = ContextVar("_session", default=None)
 
 
@@ -68,7 +67,7 @@ class DBSession(metaclass=DBSessionMeta):
         self.commit_on_exit = commit_on_exit
 
     async def __aenter__(self):
-        if not isinstance(_Session, sessionmaker):
+        if not isinstance(_Session, async_sessionmaker):
             raise SessionNotInitialisedError
 
         self.token = _session.set(_Session(**self.session_args))  # type: ignore
