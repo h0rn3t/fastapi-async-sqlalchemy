@@ -3,15 +3,14 @@ from typing import Dict, Optional, Union
 
 from sqlalchemy.engine import Engine
 from sqlalchemy.engine.url import URL
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.requests import Request
 from starlette.types import ASGIApp
 
 from fastapi_async_sqlalchemy.exceptions import MissingSessionError, SessionNotInitialisedError
 
-_Session: Optional[sessionmaker] = None
+_Session: Optional[async_sessionmaker] = None
 _session: ContextVar[Optional[AsyncSession]] = ContextVar("_session", default=None)
 
 
@@ -38,7 +37,7 @@ class SQLAlchemyMiddleware(BaseHTTPMiddleware):
             engine = custom_engine
 
         global _Session
-        _Session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False, **session_args)
+        _Session = async_sessionmaker(engine, expire_on_commit=False, **session_args)
 
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint):
         async with db(commit_on_exit=self.commit_on_exit):
@@ -68,7 +67,7 @@ class DBSession(metaclass=DBSessionMeta):
         self.commit_on_exit = commit_on_exit
 
     async def __aenter__(self):
-        if not isinstance(_Session, sessionmaker):
+        if not isinstance(_Session, async_sessionmaker):
             raise SessionNotInitialisedError
 
         self.token = _session.set(_Session(**self.session_args))  # type: ignore
