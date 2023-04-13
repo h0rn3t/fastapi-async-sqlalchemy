@@ -1,5 +1,7 @@
 class MissingSessionError(Exception):
-    """Exception raised for when the user tries to access a database session before it is created."""
+    """
+    Exception raised for when the user tries to access a database session before it is created.
+    """
 
     def __init__(self):
         msg = """
@@ -15,7 +17,9 @@ class MissingSessionError(Exception):
 
 
 class SessionNotInitialisedError(Exception):
-    """Exception raised when the user creates a new DB session without first initialising it."""
+    """
+    Exception raised when the user creates a new DB session without first initialising it.
+    """
 
     def __init__(self):
         msg = """
