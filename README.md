@@ -47,10 +47,6 @@ app.add_middleware(
         "pool_pre_ping": True, # feature will normally emit SQL equivalent to “SELECT 1” each time a connection is checked out from the pool
         "pool_size": 5,        # number of connections to keep open at a time
         "max_overflow": 10,    # number of connections to allow to be opened above pool_size
-        "connect_args": {
-            "prepared_statement_cache_size": 0,  # disable prepared statement cache
-            "statement_cache_size": 0,           # disable statement cache
-        },
     },
 )
 # once the middleware is applied, any route can then access the database session
