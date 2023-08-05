@@ -36,8 +36,12 @@ class SQLAlchemyMiddleware(BaseHTTPMiddleware):
         else:
             engine = custom_engine
 
+        expire_on_commit = session_args.pop("expire_on_commit", False)
+        if expire_on_commit is True:
+            raise ValueError("expire_on_commit must be False for async sessions.")
+
         global _Session
-        _Session = async_sessionmaker(engine, expire_on_commit=False, **session_args)
+        _Session = async_sessionmaker(engine, expire_on_commit=expire_on_commit, **session_args)
 
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint):
         async with db(commit_on_exit=self.commit_on_exit):
