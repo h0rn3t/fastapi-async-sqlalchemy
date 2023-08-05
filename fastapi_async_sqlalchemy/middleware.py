@@ -22,8 +22,8 @@ class SQLAlchemyMiddleware(BaseHTTPMiddleware):
         app: ASGIApp,
         db_url: Optional[Union[str, URL]] = None,
         custom_engine: Optional[Engine] = None,
-        engine_args: Dict = None,
-        session_args: Dict = None,
+        engine_args: Union[Dict, None] = None,
+        session_args: Union[Dict, None] = None,
         commit_on_exit: bool = False,
     ):
         super().__init__(app)
@@ -67,7 +67,7 @@ class DBSessionMeta(type):
 
 
 class DBSession(metaclass=DBSessionMeta):
-    def __init__(self, session_args: Dict = None, commit_on_exit: bool = False):
+    def __init__(self, session_args: Union[Dict, None] = None, commit_on_exit: bool = False):
         self.token = None
         self.session_args = session_args or {}
         self.commit_on_exit = commit_on_exit
