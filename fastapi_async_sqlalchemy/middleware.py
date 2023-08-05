@@ -1,8 +1,10 @@
+from contextlib import suppress
 from contextvars import ContextVar
 from typing import Dict, Optional, Union
 
 from sqlalchemy.engine import Engine
 from sqlalchemy.engine.url import URL
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.requests import Request
@@ -20,8 +22,8 @@ class SQLAlchemyMiddleware(BaseHTTPMiddleware):
         app: ASGIApp,
         db_url: Optional[Union[str, URL]] = None,
         custom_engine: Optional[Engine] = None,
-        engine_args: Dict = None,
-        session_args: Dict = None,
+        engine_args: Union[Dict, None] = None,
+        session_args: Union[Dict, None] = None,
         commit_on_exit: bool = False,
     ):
         super().__init__(app)
@@ -36,8 +38,12 @@ class SQLAlchemyMiddleware(BaseHTTPMiddleware):
         else:
             engine = custom_engine
 
+        expire_on_commit = session_args.pop("expire_on_commit", False)
+        if expire_on_commit is True:
+            raise ValueError("expire_on_commit must be False for async sessions.")
+
         global _Session
-        _Session = async_sessionmaker(engine, expire_on_commit=False, **session_args)
+        _Session = async_sessionmaker(engine, expire_on_commit=expire_on_commit, **session_args)
 
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint):
         async with db(commit_on_exit=self.commit_on_exit):
@@ -61,7 +67,7 @@ class DBSessionMeta(type):
 
 
 class DBSession(metaclass=DBSessionMeta):
-    def __init__(self, session_args: Dict = None, commit_on_exit: bool = False):
+    def __init__(self, session_args: Union[Dict, None] = None, commit_on_exit: bool = False):
         self.token = None
         self.session_args = session_args or {}
         self.commit_on_exit = commit_on_exit
@@ -79,7 +85,8 @@ class DBSession(metaclass=DBSessionMeta):
             await session.rollback()
 
         if self.commit_on_exit:
-            await session.commit()
+            with suppress(SQLAlchemyError):
+                await session.commit()
 
         await session.close()
         _session.reset(self.token)
