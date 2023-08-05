@@ -1,8 +1,10 @@
+from contextlib import suppress
 from contextvars import ContextVar
 from typing import Dict, Optional, Union
 
 from sqlalchemy.engine import Engine
 from sqlalchemy.engine.url import URL
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.requests import Request
@@ -83,7 +85,8 @@ class DBSession(metaclass=DBSessionMeta):
             await session.rollback()
 
         if self.commit_on_exit:
-            await session.commit()
+            with suppress(SQLAlchemyError):
+                await session.commit()
 
         await session.close()
         _session.reset(self.token)
