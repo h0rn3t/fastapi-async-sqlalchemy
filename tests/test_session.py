@@ -131,3 +131,33 @@ async def test_db_session_commit_fail(app, db, SQLAlchemyMiddleware):
 
     async with db():
         assert db.session
+
+
+@pytest.mark.asyncio
+async def test_rollback(app, db, SQLAlchemyMiddleware):
+    #  pytest-cov shows that the line in db.__exit__() rolling back the db session
+    #  when there is an Exception is run correctly. However, it would be much better
+    #  if we could demonstrate somehow that db.session.rollback() was called e.g. once
+    app.add_middleware(SQLAlchemyMiddleware, db_url=db_url)
+
+    with pytest.raises(Exception):
+        async with db():
+            raise Exception
+
+        db.session.rollback.assert_called_once()
+
+
+@pytest.mark.parametrize("commit_on_exit", [True, False])
+@pytest.mark.asyncio
+async def test_db_context_session_args(app, db, SQLAlchemyMiddleware, commit_on_exit):
+    app.add_middleware(SQLAlchemyMiddleware, db_url=db_url, commit_on_exit=commit_on_exit)
+
+    session_args = {}
+
+    async with db(session_args=session_args, commit_on_exit=True):
+        assert isinstance(db.session, AsyncSession)
+
+
+    session_args = {"expire_on_commit": False}
+    async with db(session_args=session_args):
+        db.session
