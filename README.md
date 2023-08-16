@@ -19,11 +19,7 @@ Provides SQLAlchemy middleware for FastAPI using AsyncSession and async engine.
 ```
 
 ### Important !!!
-If you use ```sqlmodel``` install ```fastapi-async-sqlalchemy==0.3.14```, because it depends on ```sqlalchemy<=1.4.41```
-```last version``` compatible with ```sqlmodel``` sqlalchemy>=2.0.0 but if you will use ```sqlalchemy>=1.4.42``` and ```sqlmodel``` you will get error
-```bash
-pip install fastapi-async-sqlalchemy==0.3.14
- ```
+If you use ```sqlmodel``` install ```sqlalchemy<=1.4.41```
 
 
 ### Examples
