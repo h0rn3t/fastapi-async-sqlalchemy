@@ -12,7 +12,7 @@ try:
     from sqlalchemy.ext.asyncio import async_sessionmaker
 except ImportError:
     from sqlalchemy.orm import sessionmaker as async_sessionmaker
-
+# isort: off
 from fastapi_async_sqlalchemy.exceptions import MissingSessionError, SessionNotInitialisedError
 
 _Session: Optional[async_sessionmaker] = None
