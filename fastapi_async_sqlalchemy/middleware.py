@@ -3,7 +3,13 @@ from typing import Dict, Optional, Union
 
 from sqlalchemy.engine import Engine
 from sqlalchemy.engine.url import URL
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+
+try:
+    from sqlalchemy.ext.asyncio import async_sessionmaker
+except ImportError:
+    from sqlalchemy.orm import sessionmaker as async_sessionmaker
+
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.requests import Request
 from starlette.types import ASGIApp
@@ -37,7 +43,9 @@ class SQLAlchemyMiddleware(BaseHTTPMiddleware):
             engine = custom_engine
 
         global _Session
-        _Session = async_sessionmaker(engine, expire_on_commit=False, **session_args)
+        _Session = async_sessionmaker(
+            engine, class_=AsyncSession, expire_on_commit=False, **session_args
+        )
 
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint):
         async with db(commit_on_exit=self.commit_on_exit):
@@ -45,8 +53,6 @@ class SQLAlchemyMiddleware(BaseHTTPMiddleware):
 
 
 class DBSessionMeta(type):
-    # using this metaclass means that we can access db.session as a property at a class level,
-    # rather than db().session
     @property
     def session(self) -> AsyncSession:
         """Return an instance of Session local to the current async context."""
@@ -75,14 +81,15 @@ class DBSession(metaclass=DBSessionMeta):
 
     async def __aexit__(self, exc_type, exc_value, traceback):
         session = _session.get()
-        if exc_type is not None:
-            await session.rollback()
 
-        if self.commit_on_exit:
-            await session.commit()
-
-        await session.close()
-        _session.reset(self.token)
+        try:
+            if exc_type is not None:
+                await session.rollback()
+            elif self.commit_on_exit:  # Note: Changed this to elif to avoid commit after rollback
+                await session.commit()
+        finally:
+            await session.close()
+            _session.reset(self.token)
 
 
 db: DBSessionMeta = DBSession

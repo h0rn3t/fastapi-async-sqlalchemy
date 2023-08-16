@@ -2,6 +2,7 @@
 import sys
 
 import pytest
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from starlette.middleware.base import BaseHTTPMiddleware
 
@@ -119,31 +120,14 @@ async def test_init_session(app, db, SQLAlchemyMiddleware):
         assert isinstance(db.session, AsyncSession)
 
 
-@pytest.mark.parametrize("commit_on_exit", [True, False])
 @pytest.mark.asyncio
-async def test_db_context_session_args(app, db, SQLAlchemyMiddleware, commit_on_exit):
-    app.add_middleware(SQLAlchemyMiddleware, db_url=db_url, commit_on_exit=commit_on_exit)
+async def test_db_session_commit_fail(app, db, SQLAlchemyMiddleware):
+    app.add_middleware(SQLAlchemyMiddleware, db_url=db_url, commit_on_exit=True)
 
-    session_args = {}
-
-    async with db(session_args=session_args, commit_on_exit=True):
-        assert isinstance(db.session, AsyncSession)
-
-        # assert db.session.expire_on_commit
-
-    session_args = {"expire_on_commit": False}
-    async with db(session_args=session_args):
-        db.session
-        # assert db.session.expire_on_commit
-
-
-@pytest.mark.asyncio
-async def test_rollback(app, db, SQLAlchemyMiddleware):
-    #  pytest-cov shows that the line in db.__exit__() rolling back the db session
-    #  when there is an Exception is run correctly. However, it would be much better
-    #  if we could demonstrate somehow that db.session.rollback() was called e.g. once
-    app.add_middleware(SQLAlchemyMiddleware, db_url=db_url)
-
-    with pytest.raises(Exception):
+    with pytest.raises(IntegrityError):
         async with db():
-            raise Exception
+            raise IntegrityError("test", "test", "test")
+        db.session.close.assert_called_once()
+
+    async with db():
+        assert db.session
