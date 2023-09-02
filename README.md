@@ -81,3 +81,70 @@ if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8002)
 
 ```
+
+#### Usage of multiple databases
+
+databases.py
+
+```python
+from fastapi import FastAPI
+from fastapi_async_sqlalchemy import create_middleware_and_session_proxy
+
+FirstSQLAlchemyMiddleware, first_db = create_middleware_and_session_proxy()
+SecondSQLAlchemyMiddleware, second_db = create_middleware_and_session_proxy()
+```
+
+main.py
+
+```python
+from fastapi import FastAPI
+
+from databases import FirstSQLAlchemyMiddleware, SecondSQLAlchemyMiddleware
+from routes import router
+
+app = FastAPI()
+
+app.include_router(router)
+
+app.add_middleware(
+    FirstSQLAlchemyMiddleware,
+    db_url="postgresql+asyncpg://user:user@192.168.88.200:5432/primary_db",
+    engine_args={
+        "pool_size": 5,
+        "max_overflow": 10,
+    },
+)
+app.add_middleware(
+    SecondSQLAlchemyMiddleware,
+    db_url="mysql+aiomysql://user:user@192.168.88.200:5432/primary_db",
+    engine_args={
+        "pool_size": 5,
+        "max_overflow": 10,
+    },
+)
+```
+
+routes.py
+
+```python
+from fastapi import APIRouter
+from sqlalchemy import column
+from sqlalchemy import table
+
+from databases import first_db, second_db
+
+router = APIRouter()
+
+foo = table("ms_files", column("id"))
+
+@router.get("/first-db-files")
+async def get_files_from_first_db():
+    result = await first_db.session.execute(foo.select())
+    return result.fetchall()
+
+
+@router.get("/second-db-files")
+async def get_files_from_second_db():
+    result = await second_db.session.execute(foo.select())
+    return result.fetchall()
+```
