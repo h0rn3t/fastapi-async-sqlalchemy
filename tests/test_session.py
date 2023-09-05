@@ -50,10 +50,7 @@ async def test_init_incorrect_optional_args(app, SQLAlchemyMiddleware):
     with pytest.raises(TypeError) as exc_info:
         SQLAlchemyMiddleware(app, db_url=db_url, invalid_args="test")
 
-    assert (
-        "__init__() got an unexpected keyword argument 'invalid_args'"
-        in exc_info.value.args[0]
-    )
+    assert "__init__() got an unexpected keyword argument 'invalid_args'" in exc_info.value.args[0]
 
 
 @pytest.mark.asyncio
