@@ -8,10 +8,7 @@ from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoin
 from starlette.requests import Request
 from starlette.types import ASGIApp
 
-from fastapi_async_sqlalchemy.exceptions import (
-    MissingSessionError,
-    SessionNotInitialisedError,
-)
+from fastapi_async_sqlalchemy.exceptions import MissingSessionError, SessionNotInitialisedError
 
 try:
     from sqlalchemy.ext.asyncio import async_sessionmaker
