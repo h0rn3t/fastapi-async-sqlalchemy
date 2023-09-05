@@ -39,9 +39,7 @@ def create_middleware_and_session_proxy():
             session_args = session_args or {}
 
             if not custom_engine and not db_url:
-                raise ValueError(
-                    "You need to pass a db_url or a custom_engine parameter."
-                )
+                raise ValueError("You need to pass a db_url or a custom_engine parameter.")
             if not custom_engine:
                 engine = create_async_engine(db_url, **engine_args)
             else:
