@@ -20,8 +20,8 @@ pycodestyle==2.5.0
 pydantic==1.10.13
 pyflakes==2.1.1
 pyparsing==2.4.2
-pytest==7.2.0
-pytest-cov==2.11.1
+pytest>=7.2.0
+pytest-cov>=2.11.1
 PyYAML>=5.4
 regex==2020.2.20
 requests>=2.22.0
@@ -38,5 +38,5 @@ urllib3>=1.25.9
 wcwidth==0.1.7
 zipp==3.1.0
 black==22.3.0
-pytest-asyncio==0.21.0
+pytest-asyncio>=0.21.0
 greenlet==2.0.2
