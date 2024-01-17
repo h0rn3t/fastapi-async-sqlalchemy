@@ -51,7 +51,7 @@ def create_middleware_and_session_proxy():
             )
 
         async def dispatch(self, request: Request, call_next: RequestResponseEndpoint):
-            async with db(commit_on_exit=self.commit_on_exit):
+            async with DBSession(commit_on_exit=self.commit_on_exit):
                 return await call_next(request)
 
     class DBSessionMeta(type):
