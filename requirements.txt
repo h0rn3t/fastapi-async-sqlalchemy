@@ -38,5 +38,5 @@ urllib3>=1.25.9
 wcwidth==0.1.7
 zipp==3.1.0
 black==22.3.0
-pytest-asyncio>=0.15.0
+pytest-asyncio==0.21.0
 greenlet==2.0.2
