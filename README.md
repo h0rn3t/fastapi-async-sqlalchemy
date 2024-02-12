@@ -18,8 +18,8 @@ Provides SQLAlchemy middleware for FastAPI using AsyncSession and async engine.
   pip install fastapi-async-sqlalchemy
 ```
 
-### Important !!!
-If you use ```sqlmodel``` install ```sqlalchemy<=1.4.41```
+
+It also works with ```sqlmodel```
 
 
 ### Examples
