@@ -51,7 +51,6 @@ def create_middleware_and_session_proxy():
     class DBSessionMeta(type):
         @property
         def session(self) -> AsyncSession:
-            """Возвращает текущую сессию из контекста."""
             if _Session is None:
                 raise SessionNotInitialisedError
 
@@ -61,7 +60,6 @@ def create_middleware_and_session_proxy():
 
             multi_sessions = _multi_sessions_ctx.get()
             if multi_sessions:
-                # Если multi_sessions=True, используем Task-локальные сессии
                 task = asyncio.current_task()
                 if not hasattr(task, "_db_session"):
                     task._db_session = _Session()
