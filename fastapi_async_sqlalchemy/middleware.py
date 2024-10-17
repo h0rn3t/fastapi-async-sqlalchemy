@@ -1,9 +1,11 @@
+import asyncio
+from asyncio import Task
 from contextvars import ContextVar
 from typing import Dict, Optional, Union
 
 from sqlalchemy.engine import Engine
 from sqlalchemy.engine.url import URL
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.requests import Request
 from starlette.types import ASGIApp
@@ -11,17 +13,19 @@ from starlette.types import ASGIApp
 from fastapi_async_sqlalchemy.exceptions import MissingSessionError, SessionNotInitialisedError
 
 try:
-    from sqlalchemy.ext.asyncio import async_sessionmaker
+    from sqlalchemy.ext.asyncio import async_sessionmaker  # noqa: F811
 except ImportError:
     from sqlalchemy.orm import sessionmaker as async_sessionmaker
 
 
 def create_middleware_and_session_proxy():
     _Session: Optional[async_sessionmaker] = None
+    _session: ContextVar[Optional[AsyncSession]] = ContextVar("_session", default=None)
+    _multi_sessions_ctx: ContextVar[bool] = ContextVar("_multi_sessions_context", default=False)
+    _commit_on_exit_ctx: ContextVar[bool] = ContextVar("_commit_on_exit_ctx", default=False)
     # Usage of context vars inside closures is not recommended, since they are not properly
     # garbage collected, but in our use case context var is created on program startup and
     # is used throughout the whole its lifecycle.
-    _session: ContextVar[Optional[AsyncSession]] = ContextVar("_session", default=None)
 
     class SQLAlchemyMiddleware(BaseHTTPMiddleware):
         def __init__(
@@ -61,38 +65,97 @@ def create_middleware_and_session_proxy():
             if _Session is None:
                 raise SessionNotInitialisedError
 
-            session = _session.get()
-            if session is None:
-                raise MissingSessionError
+            multi_sessions = _multi_sessions_ctx.get()
+            if multi_sessions:
+                """In this case, we need to create a new session for each task.
+                We also need to commit the session on exit if commit_on_exit is True.
+                This is useful when we need to run multiple queries in parallel.
+                For example, when we need to run multiple queries in parallel in a route handler.
+                Example:
+                ```python
+                    async with db(multi_sessions=True):
+                        async def execute_query(query):
+                            return await db.session.execute(text(query))
 
-            return session
+                        tasks = [
+                            asyncio.create_task(execute_query("SELECT 1")),
+                            asyncio.create_task(execute_query("SELECT 2")),
+                            asyncio.create_task(execute_query("SELECT 3")),
+                            asyncio.create_task(execute_query("SELECT 4")),
+                            asyncio.create_task(execute_query("SELECT 5")),
+                            asyncio.create_task(execute_query("SELECT 6")),
+                        ]
+
+                        await asyncio.gather(*tasks)
+                ```
+                """
+                commit_on_exit = _commit_on_exit_ctx.get()
+                task: Task = asyncio.current_task()  # type: ignore
+                if not hasattr(task, "_db_session"):
+                    task._db_session = _Session()  # type: ignore
+
+                    def cleanup(future):
+                        session = getattr(task, "_db_session", None)
+                        if session:
+
+                            async def do_cleanup():
+                                try:
+                                    if future.exception():
+                                        await session.rollback()
+                                    else:
+                                        if commit_on_exit:
+                                            await session.commit()
+                                finally:
+                                    await session.close()
+
+                            asyncio.create_task(do_cleanup())
+
+                    task.add_done_callback(cleanup)
+                return task._db_session  # type: ignore
+            else:
+                session = _session.get()
+                if session is None:
+                    raise MissingSessionError
+                return session
 
     class DBSession(metaclass=DBSessionMeta):
-        def __init__(self, session_args: Dict = None, commit_on_exit: bool = False):
+        def __init__(
+            self,
+            session_args: Dict = None,
+            commit_on_exit: bool = False,
+            multi_sessions: bool = False,
+        ):
             self.token = None
+            self.multi_sessions_token = None
+            self.commit_on_exit_token = None
             self.session_args = session_args or {}
             self.commit_on_exit = commit_on_exit
+            self.multi_sessions = multi_sessions
 
         async def __aenter__(self):
             if not isinstance(_Session, async_sessionmaker):
                 raise SessionNotInitialisedError
 
-            self.token = _session.set(_Session(**self.session_args))  # type: ignore
+            if self.multi_sessions:
+                self.multi_sessions_token = _multi_sessions_ctx.set(True)
+                self.commit_on_exit_token = _commit_on_exit_ctx.set(self.commit_on_exit)
+
+            self.token = _session.set(_Session(**self.session_args))
             return type(self)
 
         async def __aexit__(self, exc_type, exc_value, traceback):
             session = _session.get()
-
             try:
                 if exc_type is not None:
                     await session.rollback()
-                elif (
-                    self.commit_on_exit
-                ):  # Note: Changed this to elif to avoid commit after rollback
+                elif self.commit_on_exit:
                     await session.commit()
             finally:
                 await session.close()
                 _session.reset(self.token)
+                if self.multi_sessions_token is not None:
+                    _multi_sessions_ctx.reset(self.multi_sessions_token)
+                    _commit_on_exit_ctx.reset(self.commit_on_exit_token)
 
     return SQLAlchemyMiddleware, DBSession
 

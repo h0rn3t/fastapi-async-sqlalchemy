@@ -127,9 +127,10 @@ app.add_middleware(
 routes.py
 
 ```python
+import asyncio
+
 from fastapi import APIRouter
-from sqlalchemy import column
-from sqlalchemy import table
+from sqlalchemy import column, table, text
 
 from databases import first_db, second_db
 
@@ -147,4 +148,22 @@ async def get_files_from_first_db():
 async def get_files_from_second_db():
     result = await second_db.session.execute(foo.select())
     return result.fetchall()
+
+
+@router.get("/concurrent-queries")
+async def parallel_select():
+    async with first_db(multi_sessions=True):
+        async def execute_query(query):
+            return await first_db.session.execute(text(query))
+
+        tasks = [
+            asyncio.create_task(execute_query("SELECT 1")),
+            asyncio.create_task(execute_query("SELECT 2")),
+            asyncio.create_task(execute_query("SELECT 3")),
+            asyncio.create_task(execute_query("SELECT 4")),
+            asyncio.create_task(execute_query("SELECT 5")),
+            asyncio.create_task(execute_query("SELECT 6")),
+        ]
+
+        await asyncio.gather(*tasks)
 ```
