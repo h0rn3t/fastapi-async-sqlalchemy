@@ -67,8 +67,7 @@ def create_middleware_and_session_proxy():
 
             multi_sessions = _multi_sessions_ctx.get()
             if multi_sessions:
-                """If multi_sessions is True, we are in a context where multiple sessions are allowed.
-                In this case, we need to create a new session for each task.
+                """ In this case, we need to create a new session for each task.
                 We also need to commit the session on exit if commit_on_exit is True.
                 This is useful when we need to run multiple queries in parallel.
                 For example, when we need to run multiple queries in parallel in a route handler.
