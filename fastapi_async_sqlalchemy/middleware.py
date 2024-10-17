@@ -23,6 +23,9 @@ def create_middleware_and_session_proxy():
     _session: ContextVar[Optional[AsyncSession]] = ContextVar("_session", default=None)
     _multi_sessions_ctx: ContextVar[bool] = ContextVar("_multi_sessions_context", default=False)
     _commit_on_exit_ctx: ContextVar[bool] = ContextVar("_commit_on_exit_ctx", default=False)
+    # Usage of context vars inside closures is not recommended, since they are not properly
+    # garbage collected, but in our use case context var is created on program startup and
+    # is used throughout the whole its lifecycle.
 
     class SQLAlchemyMiddleware(BaseHTTPMiddleware):
         def __init__(
@@ -58,11 +61,35 @@ def create_middleware_and_session_proxy():
     class DBSessionMeta(type):
         @property
         def session(self) -> AsyncSession:
+            """Return an instance of Session local to the current async context."""
             if _Session is None:
                 raise SessionNotInitialisedError
 
             multi_sessions = _multi_sessions_ctx.get()
             if multi_sessions:
+                """If multi_sessions is True, we are in a context where multiple sessions are allowed.
+                In this case, we need to create a new session for each task.
+                We also need to commit the session on exit if commit_on_exit is True.
+                This is useful when we need to run multiple queries in parallel.
+                For example, when we need to run multiple queries in parallel in a route handler.
+                Example:
+                ```python
+                    async with db(multi_sessions=True):
+                        async def execute_query(query):
+                            return await db.session.execute(text(query))
+
+                        tasks = [
+                            asyncio.create_task(execute_query("SELECT 1")),
+                            asyncio.create_task(execute_query("SELECT 2")),
+                            asyncio.create_task(execute_query("SELECT 3")),
+                            asyncio.create_task(execute_query("SELECT 4")),
+                            asyncio.create_task(execute_query("SELECT 5")),
+                            asyncio.create_task(execute_query("SELECT 6")),
+                        ]
+
+                        await asyncio.gather(*tasks)
+                ```
+                """
                 commit_on_exit = _commit_on_exit_ctx.get()
                 task: Task = asyncio.current_task()  # type: ignore
                 if not hasattr(task, "_db_session"):
