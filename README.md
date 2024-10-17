@@ -1,5 +1,3 @@
-from pytest_cov.embed import multiprocessing_finishfrom tests.test_session import db_url
-
 # SQLAlchemy FastAPI middleware
 
 [![ci](https://img.shields.io/badge/Support-Ukraine-FFD500?style=flat&labelColor=005BBB)](https://img.shields.io/badge/Support-Ukraine-FFD500?style=flat&labelColor=005BBB)
