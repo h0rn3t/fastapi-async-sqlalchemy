@@ -1,4 +1,5 @@
 import asyncio
+from asyncio import Task
 from contextvars import ContextVar
 from typing import Dict, Optional, Union
 
@@ -12,7 +13,7 @@ from starlette.types import ASGIApp
 from fastapi_async_sqlalchemy.exceptions import MissingSessionError, SessionNotInitialisedError
 
 try:
-    from sqlalchemy.ext.asyncio import async_sessionmaker
+    from sqlalchemy.ext.asyncio import async_sessionmaker  # noqa: F811
 except ImportError:
     from sqlalchemy.orm import sessionmaker as async_sessionmaker
 
@@ -63,9 +64,9 @@ def create_middleware_and_session_proxy():
             multi_sessions = _multi_sessions_ctx.get()
             if multi_sessions:
                 commit_on_exit = _commit_on_exit_ctx.get()
-                task = asyncio.current_task()
+                task: Task = asyncio.current_task()  # type: ignore
                 if not hasattr(task, "_db_session"):
-                    task._db_session = _Session()
+                    task._db_session = _Session()  # type: ignore
 
                     def cleanup(future):
                         session = getattr(task, "_db_session", None)
@@ -84,7 +85,7 @@ def create_middleware_and_session_proxy():
                             asyncio.create_task(do_cleanup())
 
                     task.add_done_callback(cleanup)
-                return task._db_session
+                return task._db_session  # type: ignore
             else:
                 session = _session.get()
                 if session is None:

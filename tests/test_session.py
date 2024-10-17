@@ -158,6 +158,7 @@ async def test_multi_sessions(app, db, SQLAlchemyMiddleware):
     app.add_middleware(SQLAlchemyMiddleware, db_url=db_url)
 
     async with db(multi_sessions=True):
+
         async def execute_query(query):
             return await db.session.execute(text(query))
 
