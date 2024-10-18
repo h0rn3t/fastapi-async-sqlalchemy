@@ -173,3 +173,28 @@ async def test_multi_sessions(app, db, SQLAlchemyMiddleware):
 
         res = await asyncio.gather(*tasks)
         assert len(res) == 6
+
+
+@pytest.mark.asyncio
+async def test_concurrent_inserts(app, db, SQLAlchemyMiddleware):
+    app.add_middleware(SQLAlchemyMiddleware, db_url=db_url)
+
+    async with db(multi_sessions=True, commit_on_exit=True):
+        await db.session.execute(
+            text("CREATE TABLE IF NOT EXISTS my_model (id INTEGER PRIMARY KEY, value TEXT)")
+        )
+
+        async def insert_data(value):
+            await db.session.execute(
+                text("INSERT INTO my_model (value) VALUES (:value)"), {"value": value}
+            )
+            await db.session.flush()
+
+        tasks = [asyncio.create_task(insert_data(f"value_{i}")) for i in range(10)]
+
+        result_ids = await asyncio.gather(*tasks)
+        assert len(result_ids) == 10
+
+        records = await db.session.execute(text("SELECT * FROM my_model"))
+        records = records.scalars().all()
+        assert len(records) == 10
