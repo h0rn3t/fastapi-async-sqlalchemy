@@ -16,10 +16,18 @@ try:
 except ImportError:
     from sqlalchemy.orm import sessionmaker as async_sessionmaker
 
+# Try to import SQLModel's AsyncSession which has the .exec() method
+try:
+    from sqlmodel.ext.asyncio.session import AsyncSession as SQLModelAsyncSession
+
+    DefaultAsyncSession = SQLModelAsyncSession
+except ImportError:
+    DefaultAsyncSession = AsyncSession
+
 
 def create_middleware_and_session_proxy():
     _Session: Optional[async_sessionmaker] = None
-    _session: ContextVar[Optional[AsyncSession]] = ContextVar("_session", default=None)
+    _session: ContextVar[Optional[DefaultAsyncSession]] = ContextVar("_session", default=None)
     _multi_sessions_ctx: ContextVar[bool] = ContextVar("_multi_sessions_context", default=False)
     _commit_on_exit_ctx: ContextVar[bool] = ContextVar("_commit_on_exit_ctx", default=False)
     # Usage of context vars inside closures is not recommended, since they are not properly
@@ -50,7 +58,7 @@ def create_middleware_and_session_proxy():
 
             nonlocal _Session
             _Session = async_sessionmaker(
-                engine, class_=AsyncSession, expire_on_commit=False, **session_args
+                engine, class_=DefaultAsyncSession, expire_on_commit=False, **session_args
             )
 
         async def dispatch(self, request: Request, call_next: RequestResponseEndpoint):
@@ -59,7 +67,7 @@ def create_middleware_and_session_proxy():
 
     class DBSessionMeta(type):
         @property
-        def session(self) -> AsyncSession:
+        def session(self) -> DefaultAsyncSession:
             """Return an instance of Session local to the current async context."""
             if _Session is None:
                 raise SessionNotInitialisedError
