@@ -13,17 +13,17 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        build: [linux_3.9, windows_3.9, mac_3.9]
+        build: [linux_3.12, windows_3.12, mac_3.12]
         include:
-        - build: linux_3.9
+        - build: linux_3.12
           os: ubuntu-latest
-          python: 3.9
-        - build: windows_3.9
+          python: 3.12
+        - build: windows_3.12
           os: windows-latest
-          python: 3.9
-        - build: mac_3.9
+          python: 3.12
+        - build: mac_3.12
           os: macos-latest
-          python: 3.9
+          python: 3.12
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
@@ -38,18 +38,18 @@ jobs:
         python -m pip install --upgrade pip wheel
         pip install -r requirements.txt
 
-    # test all the builds apart from linux_3.8...
+    # test all the builds apart from linux_3.12...
     - name: Test with pytest
-      if: matrix.build != 'linux_3.9'
+      if: matrix.build != 'linux_3.12'
       run: pytest
 
-    # only do the test coverage for linux_3.8
+    # only do the test coverage for linux_3.12
     - name: Produce coverage report
-      if: matrix.build == 'linux_3.9'
+      if: matrix.build == 'linux_3.12'
       run: pytest --cov=fastapi_async_sqlalchemy --cov-report=xml
 
     - name: Upload coverage report
-      if: matrix.build == 'linux_3.9'
+      if: matrix.build == 'linux_3.12'
       uses: codecov/codecov-action@v4
       with:
         file: ./coverage.xml
@@ -65,7 +65,7 @@ jobs:
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
-        python-version: 3.9
+        python-version: 3.12
 
     - name: Install dependencies
       run: pip install flake8
@@ -83,7 +83,7 @@ jobs:
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
-        python-version: 3.9
+        python-version: 3.12
 
     - name: Install dependencies
       # isort needs all of the packages to be installed so it can
