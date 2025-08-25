@@ -2,7 +2,7 @@ import sys
 
 import pytest
 from fastapi import FastAPI
-from fastapi.testclient import TestClient
+from starlette.testclient import TestClient
 
 
 @pytest.fixture
