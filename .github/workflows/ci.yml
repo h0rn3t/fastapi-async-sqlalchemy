@@ -55,8 +55,8 @@ jobs:
         file: ./coverage.xml
         token: ${{ secrets.CODECOV_TOKEN }}
 
-  lint:
-    name: lint
+  ruff:
+    name: ruff
     runs-on: ubuntu-latest
     steps:
     - name: Checkout repository
@@ -68,30 +68,10 @@ jobs:
         python-version: 3.12
 
     - name: Install dependencies
-      run: pip install flake8
+      run: pip install ruff
 
-    - name: Run flake8
-      run: flake8 --count .
+    - name: Run ruff linter
+      run: ruff check .
 
-  format:
-    name: format
-    runs-on: ubuntu-latest
-    steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
-
-    - name: Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: 3.12
-
-    - name: Install dependencies
-      # isort needs all of the packages to be installed so it can
-      # tell which are third party and which are first party
-      run: pip install -r requirements.txt
-
-    - name: Check formatting of imports
-      run: isort --check-only --diff --verbose
-
-    - name: Check formatting of code
-      run: black . --check --diff
+    - name: Run ruff formatter
+      run: ruff format --check .

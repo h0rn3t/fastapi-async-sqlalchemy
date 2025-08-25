@@ -53,7 +53,7 @@ async def test_sqlmodel_exec_method_exists(app, db, SQLAlchemyMiddleware):
     async with db():
         # Test that exec method exists
         assert hasattr(db.session, "exec")
-        assert callable(getattr(db.session, "exec"))
+        assert callable(db.session.exec)
 
 
 @pytest.mark.skipif(not SQLMODEL_AVAILABLE, reason="SQLModel not available")
@@ -272,8 +272,8 @@ async def test_sqlmodel_session_has_both_exec_and_execute(app, db, SQLAlchemyMid
         # Should have both methods
         assert hasattr(db.session, "exec")
         assert hasattr(db.session, "execute")
-        assert callable(getattr(db.session, "exec"))
-        assert callable(getattr(db.session, "execute"))
+        assert callable(db.session.exec)
+        assert callable(db.session.execute)
 
         # Both should work
         result1 = await db.session.execute(text("SELECT 42 as answer"))

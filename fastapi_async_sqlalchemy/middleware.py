@@ -1,33 +1,35 @@
 import asyncio
 from contextvars import ContextVar
-from typing import Dict, Optional, Union
+from typing import Dict, Optional, Type, Union
 
-from sqlalchemy.engine import Engine
 from sqlalchemy.engine.url import URL
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, create_async_engine
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.requests import Request
 from starlette.types import ASGIApp
 
-from fastapi_async_sqlalchemy.exceptions import MissingSessionError, SessionNotInitialisedError
+from fastapi_async_sqlalchemy.exceptions import (
+    MissingSessionError,
+    SessionNotInitialisedError,
+)
 
 try:
-    from sqlalchemy.ext.asyncio import async_sessionmaker  # noqa: F811
+    from sqlalchemy.ext.asyncio import async_sessionmaker
 except ImportError:
-    from sqlalchemy.orm import sessionmaker as async_sessionmaker
+    from sqlalchemy.orm import sessionmaker as async_sessionmaker  # type: ignore
 
 # Try to import SQLModel's AsyncSession which has the .exec() method
 try:
     from sqlmodel.ext.asyncio.session import AsyncSession as SQLModelAsyncSession
 
-    DefaultAsyncSession = SQLModelAsyncSession
+    DefaultAsyncSession: Type[AsyncSession] = SQLModelAsyncSession  # type: ignore
 except ImportError:
-    DefaultAsyncSession = AsyncSession
+    DefaultAsyncSession: Type[AsyncSession] = AsyncSession  # type: ignore
 
 
-def create_middleware_and_session_proxy():
+def create_middleware_and_session_proxy() -> tuple:
     _Session: Optional[async_sessionmaker] = None
-    _session: ContextVar[Optional[DefaultAsyncSession]] = ContextVar("_session", default=None)
+    _session: ContextVar[Optional[AsyncSession]] = ContextVar("_session", default=None)
     _multi_sessions_ctx: ContextVar[bool] = ContextVar("_multi_sessions_context", default=False)
     _commit_on_exit_ctx: ContextVar[bool] = ContextVar("_commit_on_exit_ctx", default=False)
     # Usage of context vars inside closures is not recommended, since they are not properly
@@ -39,9 +41,9 @@ def create_middleware_and_session_proxy():
             self,
             app: ASGIApp,
             db_url: Optional[Union[str, URL]] = None,
-            custom_engine: Optional[Engine] = None,
-            engine_args: Dict = None,
-            session_args: Dict = None,
+            custom_engine: Optional[AsyncEngine] = None,
+            engine_args: Optional[Dict] = None,
+            session_args: Optional[Dict] = None,
             commit_on_exit: bool = False,
         ):
             super().__init__(app)
@@ -52,13 +54,18 @@ def create_middleware_and_session_proxy():
             if not custom_engine and not db_url:
                 raise ValueError("You need to pass a db_url or a custom_engine parameter.")
             if not custom_engine:
+                if db_url is None:
+                    raise ValueError("db_url cannot be None when custom_engine is not provided")
                 engine = create_async_engine(db_url, **engine_args)
             else:
                 engine = custom_engine
 
             nonlocal _Session
             _Session = async_sessionmaker(
-                engine, class_=DefaultAsyncSession, expire_on_commit=False, **session_args
+                engine,
+                class_=DefaultAsyncSession,
+                expire_on_commit=False,
+                **session_args,
             )
 
         async def dispatch(self, request: Request, call_next: RequestResponseEndpoint):
@@ -67,7 +74,7 @@ def create_middleware_and_session_proxy():
 
     class DBSessionMeta(type):
         @property
-        def session(self) -> DefaultAsyncSession:
+        def session(self) -> AsyncSession:
             """Return an instance of Session local to the current async context."""
             if _Session is None:
                 raise SessionNotInitialisedError
@@ -123,7 +130,7 @@ def create_middleware_and_session_proxy():
     class DBSession(metaclass=DBSessionMeta):
         def __init__(
             self,
-            session_args: Dict = None,
+            session_args: Optional[Dict] = None,
             commit_on_exit: bool = False,
             multi_sessions: bool = False,
         ):
