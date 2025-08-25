@@ -12,8 +12,7 @@ def app():
 
 @pytest.fixture
 def client(app):
-    with TestClient(app) as c:
-        yield c
+    return TestClient(app)
 
 
 @pytest.fixture
