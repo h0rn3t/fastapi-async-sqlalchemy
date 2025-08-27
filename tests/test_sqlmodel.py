@@ -23,7 +23,7 @@ db_url = "sqlite+aiosqlite://"
 # Define test models only if SQLModel is available
 if SQLMODEL_AVAILABLE:
 
-    class TestHero(SQLModel, table=True):  # type: ignore
+    class Hero(SQLModel, table=True):  # type: ignore
         __tablename__ = "test_hero"
 
         id: Optional[int] = Field(default=None, primary_key=True)
@@ -68,7 +68,7 @@ async def test_sqlmodel_exec_method_basic_query(app, db, SQLAlchemyMiddleware):
             await conn.run_sync(SQLModel.metadata.create_all)
 
         # Test basic select query with exec
-        query = select(TestHero)
+        query = select(Hero)
         result = await db.session.exec(query)
         heroes = result.all()
         assert isinstance(heroes, list)
@@ -86,7 +86,7 @@ async def test_sqlmodel_exec_crud_operations(app, db, SQLAlchemyMiddleware):
         async with db.session.bind.begin() as conn:
             await conn.run_sync(SQLModel.metadata.create_all)
         # Create a hero
-        hero = TestHero(name="Spider-Man", secret_name="Peter Parker", age=25)
+        hero = Hero(name="Spider-Man", secret_name="Peter Parker", age=25)
         db.session.add(hero)
         await db.session.commit()
         await db.session.refresh(hero)
@@ -95,12 +95,12 @@ async def test_sqlmodel_exec_crud_operations(app, db, SQLAlchemyMiddleware):
         assert hero.id is not None
 
         # Query the hero using exec
-        query = select(TestHero).where(TestHero.name == "Spider-Man")
+        query = select(Hero).where(Hero.name == "Spider-Man")
         result = await db.session.exec(query)
         found_hero = result.first()
 
         assert found_hero is not None
-        assert isinstance(found_hero, TestHero)  # Should be SQLModel instance, not Row
+        assert isinstance(found_hero, Hero)  # Should be SQLModel instance, not Row
         assert found_hero.name == "Spider-Man"
         assert found_hero.secret_name == "Peter Parker"
         assert found_hero.age == 25
@@ -118,9 +118,9 @@ async def test_sqlmodel_exec_with_where_clause(app, db, SQLAlchemyMiddleware):
             await conn.run_sync(SQLModel.metadata.create_all)
         # Create multiple heroes
         heroes_data = [
-            TestHero(name="Spider-Man", secret_name="Peter Parker", age=25),
-            TestHero(name="Iron Man", secret_name="Tony Stark", age=45),
-            TestHero(name="Captain America", secret_name="Steve Rogers", age=100),
+            Hero(name="Spider-Man", secret_name="Peter Parker", age=25),
+            Hero(name="Iron Man", secret_name="Tony Stark", age=45),
+            Hero(name="Captain America", secret_name="Steve Rogers", age=100),
         ]
 
         for hero in heroes_data:
@@ -128,7 +128,7 @@ async def test_sqlmodel_exec_with_where_clause(app, db, SQLAlchemyMiddleware):
         await db.session.commit()
 
         # Test filtering by age
-        query = select(TestHero).where(TestHero.age > 30)
+        query = select(Hero).where(Hero.age > 30)
         result = await db.session.exec(query)
         older_heroes = result.all()
 
@@ -150,18 +150,18 @@ async def test_sqlmodel_exec_returns_sqlmodel_objects(app, db, SQLAlchemyMiddlew
         async with db.session.bind.begin() as conn:
             await conn.run_sync(SQLModel.metadata.create_all)
         # Create a hero
-        hero = TestHero(name="Batman", secret_name="Bruce Wayne", age=35)
+        hero = Hero(name="Batman", secret_name="Bruce Wayne", age=35)
         db.session.add(hero)
         await db.session.commit()
         await db.session.refresh(hero)
 
         # Query using exec
-        query = select(TestHero).where(TestHero.name == "Batman")
+        query = select(Hero).where(Hero.name == "Batman")
         result = await db.session.exec(query)
         found_hero = result.first()
 
         # Should be a SQLModel instance, not a Row
-        assert isinstance(found_hero, TestHero)
+        assert isinstance(found_hero, Hero)
         assert isinstance(found_hero, SQLModel)
         assert not str(type(found_hero)).startswith("<class 'sqlalchemy.engine.row.Row")
 
@@ -212,12 +212,12 @@ async def test_sqlmodel_exec_in_route(app, client, db, SQLAlchemyMiddleware):
             await conn.run_sync(SQLModel.metadata.create_all)
 
         # Create and query a hero using exec
-        hero = TestHero(name="Flash", secret_name="Barry Allen", age=28)
+        hero = Hero(name="Flash", secret_name="Barry Allen", age=28)
         db.session.add(hero)
         await db.session.commit()
         await db.session.refresh(hero)
 
-        query = select(TestHero).where(TestHero.name == "Flash")
+        query = select(Hero).where(Hero.name == "Flash")
         result = await db.session.exec(query)
         found_hero = result.first()
 
@@ -256,7 +256,7 @@ async def test_sqlmodel_exec_multi_sessions(app, db, SQLAlchemyMiddleware):
         assert hasattr(session3, "exec")
 
         # Test basic exec query on one session
-        query = select(TestHero)
+        query = select(Hero)
         result = await session1.exec(query)
         heroes = result.all()
         assert isinstance(heroes, list)
