@@ -13,23 +13,23 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        build: [linux_3.9, windows_3.9, mac_3.9]
+        build: [linux_3.12, windows_3.12, mac_3.12]
         include:
-        - build: linux_3.9
+        - build: linux_3.12
           os: ubuntu-latest
-          python: 3.9
-        - build: windows_3.9
+          python: 3.12
+        - build: windows_3.12
           os: windows-latest
-          python: 3.9
-        - build: mac_3.9
+          python: 3.12
+        - build: mac_3.12
           os: macos-latest
-          python: 3.9
+          python: 3.12
     steps:
     - name: Checkout repository
-      uses: actions/checkout@v2
+      uses: actions/checkout@v4
 
     - name: Set up Python ${{ matrix.python }}
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5
       with:
         python-version: ${{ matrix.python }}
 
@@ -38,59 +38,40 @@ jobs:
         python -m pip install --upgrade pip wheel
         pip install -r requirements.txt
 
-    # test all the builds apart from linux_3.8...
+    # test all the builds apart from linux_3.12...
     - name: Test with pytest
-      if: matrix.build != 'linux_3.9'
+      if: matrix.build != 'linux_3.12'
       run: pytest
 
-    # only do the test coverage for linux_3.8
+    # only do the test coverage for linux_3.12
     - name: Produce coverage report
-      if: matrix.build == 'linux_3.9'
+      if: matrix.build == 'linux_3.12'
       run: pytest --cov=fastapi_async_sqlalchemy --cov-report=xml
 
     - name: Upload coverage report
-      if: matrix.build == 'linux_3.9'
-      uses: codecov/codecov-action@v1
+      if: matrix.build == 'linux_3.12'
+      uses: codecov/codecov-action@v4
       with:
         file: ./coverage.xml
+        token: ${{ secrets.CODECOV_TOKEN }}
 
-  lint:
-    name: lint
+  ruff:
+    name: ruff
     runs-on: ubuntu-latest
     steps:
     - name: Checkout repository
-      uses: actions/checkout@v2
+      uses: actions/checkout@v4
 
     - name: Set up Python
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5
       with:
-        python-version: 3.9
+        python-version: 3.12
 
     - name: Install dependencies
-      run: pip install flake8
+      run: pip install ruff
 
-    - name: Run flake8
-      run: flake8 --count .
+    - name: Run ruff linter
+      run: ruff check .
 
-  format:
-    name: format
-    runs-on: ubuntu-latest
-    steps:
-    - name: Checkout repository
-      uses: actions/checkout@v2
-
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: 3.9
-
-    - name: Install dependencies
-      # isort needs all of the packages to be installed so it can
-      # tell which are third party and which are first party
-      run: pip install -r requirements.txt
-
-    - name: Check formatting of imports
-      run: isort --check-only --diff --verbose
-
-    - name: Check formatting of code
-      run: black . --check --diff
+    - name: Run ruff formatter
+      run: ruff format --check .

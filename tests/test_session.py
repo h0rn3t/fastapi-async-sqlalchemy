@@ -6,7 +6,10 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from fastapi_async_sqlalchemy.exceptions import MissingSessionError, SessionNotInitialisedError
+from fastapi_async_sqlalchemy.exceptions import (
+    MissingSessionError,
+    SessionNotInitialisedError,
+)
 
 db_url = "sqlite+aiosqlite://"
 
@@ -72,7 +75,7 @@ async def test_inside_route_without_middleware_fails(app, client, db):
     @app.get("/")
     def test_get():
         with pytest.raises(SessionNotInitialisedError):
-            db.session
+            _ = db.session
 
     client.get("/")
 
@@ -88,7 +91,7 @@ async def test_outside_of_route(app, db, SQLAlchemyMiddleware):
 @pytest.mark.asyncio
 async def test_outside_of_route_without_middleware_fails(db):
     with pytest.raises(SessionNotInitialisedError):
-        db.session
+        _ = db.session
 
     with pytest.raises(SessionNotInitialisedError):
         async with db():
@@ -100,7 +103,7 @@ async def test_outside_of_route_without_context_fails(app, db, SQLAlchemyMiddlew
     app.add_middleware(SQLAlchemyMiddleware, db_url=db_url)
 
     with pytest.raises(MissingSessionError):
-        db.session
+        _ = db.session
 
 
 @pytest.mark.asyncio
@@ -131,9 +134,9 @@ async def test_rollback(app, db, SQLAlchemyMiddleware):
     #  if we could demonstrate somehow that db.session.rollback() was called e.g. once
     app.add_middleware(SQLAlchemyMiddleware, db_url=db_url)
 
-    with pytest.raises(Exception):
+    with pytest.raises(RuntimeError):
         async with db():
-            raise Exception
+            raise RuntimeError("Test exception")
 
         db.session.rollback.assert_called_once()
 
@@ -150,7 +153,7 @@ async def test_db_context_session_args(app, db, SQLAlchemyMiddleware, commit_on_
 
     session_args = {"expire_on_commit": False}
     async with db(session_args=session_args):
-        db.session
+        _ = db.session
 
 
 @pytest.mark.asyncio
