@@ -1,6 +1,6 @@
-import asyncio
+import warnings
 from contextvars import ContextVar
-from typing import Dict, Optional, Type, Union
+from typing import Dict, Optional, Set, Type, Union
 
 from sqlalchemy.engine.url import URL
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, create_async_engine
@@ -32,6 +32,9 @@ def create_middleware_and_session_proxy() -> tuple:
     _session: ContextVar[Optional[AsyncSession]] = ContextVar("_session", default=None)
     _multi_sessions_ctx: ContextVar[bool] = ContextVar("_multi_sessions_context", default=False)
     _commit_on_exit_ctx: ContextVar[bool] = ContextVar("_commit_on_exit_ctx", default=False)
+    _tracked_sessions: ContextVar[Optional[Set[AsyncSession]]] = ContextVar(
+        "_tracked_sessions", default=None
+    )
     # Usage of context vars inside closures is not recommended, since they are not properly
     # garbage collected, but in our use case context var is created on program startup and
     # is used throughout the whole its lifecycle.
@@ -103,23 +106,21 @@ def create_middleware_and_session_proxy() -> tuple:
                         await asyncio.gather(*tasks)
                 ```
                 """
-                commit_on_exit = _commit_on_exit_ctx.get()
                 # Always create a new session for each access when multi_sessions=True
                 session = _Session()
 
-                async def cleanup():
-                    try:
-                        if commit_on_exit:
-                            await session.commit()
-                    except Exception:
-                        await session.rollback()
-                        raise
-                    finally:
-                        await session.close()
+                # Track the session for cleanup in __aexit__
+                tracked = _tracked_sessions.get()
+                if tracked is not None:
+                    tracked.add(session)
+                else:
+                    warnings.warn(
+                        """Session created in multi_sessions mode but no tracking set found.
+                        This session may leak if not properly closed.""",
+                        ResourceWarning,
+                        stacklevel=2,
+                    )
 
-                task = asyncio.current_task()
-                if task is not None:
-                    task.add_done_callback(lambda t: asyncio.create_task(cleanup()))
                 return session
             else:
                 session = _session.get()
@@ -136,6 +137,7 @@ def create_middleware_and_session_proxy() -> tuple:
         ):
             self.token = None
             self.commit_on_exit_token = None
+            self.tracked_sessions_token = None
             self.session_args = session_args or {}
             self.commit_on_exit = commit_on_exit
             self.multi_sessions = multi_sessions
@@ -147,21 +149,73 @@ def create_middleware_and_session_proxy() -> tuple:
             if self.multi_sessions:
                 self.multi_sessions_token = _multi_sessions_ctx.set(True)
                 self.commit_on_exit_token = _commit_on_exit_ctx.set(self.commit_on_exit)
+                self.tracked_sessions_token = _tracked_sessions.set(set())
             else:
                 self.token = _session.set(_Session(**self.session_args))
             return type(self)
 
         async def __aexit__(self, exc_type, exc_value, traceback):
             if self.multi_sessions:
+                # Clean up all tracked sessions
+                tracked_sessions = _tracked_sessions.get()
+                if tracked_sessions:
+                    cleanup_errors = []
+                    for session in tracked_sessions:
+                        try:
+                            if exc_type is not None:
+                                await session.rollback()
+                            elif self.commit_on_exit:
+                                try:
+                                    await session.commit()
+                                except Exception as commit_error:
+                                    warnings.warn(
+                                        f"Failed to commit in multi_sessions: {commit_error}",
+                                        RuntimeWarning,
+                                        stacklevel=2,
+                                    )
+                                    await session.rollback()
+                                    cleanup_errors.append(commit_error)
+                        except Exception as cleanup_error:
+                            warnings.warn(
+                                f"Failed to rollback session in multi_sessions: {cleanup_error}",
+                                RuntimeWarning,
+                                stacklevel=2,
+                            )
+                            cleanup_errors.append(cleanup_error)
+                        finally:
+                            try:
+                                await session.close()
+                            except Exception as close_error:
+                                warnings.warn(
+                                    f"Failed to close session in multi_session: {close_error}",
+                                    ResourceWarning,
+                                    stacklevel=2,
+                                )
+                                cleanup_errors.append(close_error)
+
+                    if cleanup_errors and exc_type is None:
+                        warnings.warn(
+                            f"Encountered {len(cleanup_errors)} error(s) during session cleanup",
+                            RuntimeWarning,
+                            stacklevel=2,
+                        )
+
+                # Reset context vars
+                _tracked_sessions.reset(self.tracked_sessions_token)
                 _multi_sessions_ctx.reset(self.multi_sessions_token)
                 _commit_on_exit_ctx.reset(self.commit_on_exit_token)
             else:
+                # Standard single-session mode
                 session = _session.get()
                 try:
                     if exc_type is not None:
                         await session.rollback()
                     elif self.commit_on_exit:
-                        await session.commit()
+                        try:
+                            await session.commit()
+                        except Exception:
+                            await session.rollback()
+                            raise
                 finally:
                     await session.close()
                     _session.reset(self.token)
