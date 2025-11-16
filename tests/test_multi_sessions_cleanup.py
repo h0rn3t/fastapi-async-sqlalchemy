@@ -26,9 +26,13 @@ async def test_multi_sessions_all_sessions_closed(app, SQLAlchemyMiddleware, db,
     target_classes = []
     target_classes.append(AsyncSession)
     try:
-        from sqlmodel.ext.asyncio.session import AsyncSession as SQLModelAsyncSession  # type: ignore
+        from sqlmodel.ext.asyncio.session import (
+            AsyncSession as SQLModelAsyncSession,  # type: ignore
+        )
 
-        target_classes.append(SQLModelAsyncSession)  # pragma: no cover - depends on optional dependency
+        target_classes.append(
+            SQLModelAsyncSession
+        )  # pragma: no cover - depends on optional dependency
     except Exception:  # pragma: no cover - sqlmodel may not be installed
         pass
 
@@ -60,6 +64,7 @@ async def test_multi_sessions_all_sessions_closed(app, SQLAlchemyMiddleware, db,
 
     try:
         async with db(multi_sessions=True, commit_on_exit=commit_on_exit):
+
             async def worker():
                 # Access session multiple times in same task to create distinct sessions
                 s1 = db.session
@@ -82,4 +87,3 @@ async def test_multi_sessions_all_sessions_closed(app, SQLAlchemyMiddleware, db,
         for cls in target_classes:
             cls.__init__ = originals[(cls, "__init__")]  # type: ignore
             cls.close = originals[(cls, "close")]  # type: ignore
-
