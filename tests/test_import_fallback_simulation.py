@@ -4,8 +4,6 @@ These tests document the behavior of lines 18-19 and 26-27
 which only execute in specific import scenarios
 """
 
-import sys
-from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -115,7 +113,6 @@ def test_session_tracking_warning_scenario():
     This should not happen in normal usage since __aenter__ sets up tracking,
     but the warning is there as a safety check.
     """
-    import warnings
 
     # This tests that the code path exists
     # In practice, the tracking set is always created in __aenter__

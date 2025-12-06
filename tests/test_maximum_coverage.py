@@ -4,8 +4,6 @@ Focuses on uncovered lines in middleware.py
 """
 
 import asyncio
-import sys
-from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi import FastAPI
@@ -32,8 +30,6 @@ async def test_multi_session_cleanup_with_commit_exception():
             session = db.session
 
             # Mock the commit to raise an exception
-            original_commit = session.commit
-
             async def failing_commit():
                 raise SQLAlchemyError("Simulated commit failure")
 
@@ -218,7 +214,7 @@ async def test_session_outside_middleware_context():
     app.add_middleware(SQLAlchemyMiddleware_local, db_url="sqlite+aiosqlite://")
 
     # Initialize the middleware
-    client = TestClient(app)
+    TestClient(app)
 
     # Try to access session outside of request context
     with pytest.raises(MissingSessionError):
@@ -421,8 +417,6 @@ async def test_task_done_callback_cleanup():
     """Test that cleanup is added as task done callback (line 122)"""
     app = FastAPI()
     app.add_middleware(SQLAlchemyMiddleware, db_url="sqlite+aiosqlite:///:memory:")
-
-    cleanup_executed = False
 
     @app.get("/test_callback")
     async def test_callback():

@@ -3,9 +3,7 @@ Additional edge case tests to maximize coverage
 Targets specific uncovered lines in middleware.py
 """
 
-import asyncio
 import warnings
-from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi import FastAPI
@@ -48,15 +46,13 @@ async def test_multi_session_commit_failure_with_warning():
 
     @app.get("/test_commit_failure_warning")
     async def test_commit_failure_warning():
-        with warnings.catch_warnings(record=True) as w:
+        with warnings.catch_warnings(record=True):
             warnings.simplefilter("always")
 
             async with db(multi_sessions=True, commit_on_exit=True):
                 session = db.session
 
                 # Mock commit to raise exception
-                original_commit = session.commit
-
                 async def failing_commit():
                     raise SQLAlchemyError("Commit failed")
 
@@ -79,7 +75,7 @@ async def test_multi_session_rollback_failure_with_warning():
 
     @app.get("/test_rollback_failure")
     async def test_rollback_failure():
-        with warnings.catch_warnings(record=True) as w:
+        with warnings.catch_warnings(record=True):
             warnings.simplefilter("always")
 
             async with db(multi_sessions=True, commit_on_exit=True):
@@ -112,7 +108,7 @@ async def test_multi_session_close_failure_with_warning():
 
     @app.get("/test_close_failure")
     async def test_close_failure():
-        with warnings.catch_warnings(record=True) as w:
+        with warnings.catch_warnings(record=True):
             warnings.simplefilter("always")
 
             async with db(multi_sessions=True):
@@ -184,7 +180,7 @@ async def test_session_created_without_tracking_warning():
     app.add_middleware(SQLAlchemyMiddleware_local, db_url="sqlite+aiosqlite:///:memory:")
 
     # Initialize middleware
-    client = TestClient(app)
+    TestClient(app)
 
     # This test verifies the warning path exists
     # In normal usage, the tracking set is always created in __aenter__
