@@ -31,7 +31,7 @@ SQLAlchemy>=1.4.19
 sqlmodel>=0.0.24
 asyncpg>=0.27.0
 aiosqlite==0.20.0
-sqlparse==0.5.1
+sqlparse>=0.5.4
 starlette>=0.13.6
 toml>=0.10.1
 typed-ast>=1.4.2
