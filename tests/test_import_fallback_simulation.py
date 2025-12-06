@@ -4,7 +4,6 @@ These tests document the behavior of lines 18-19 and 26-27
 which only execute in specific import scenarios
 """
 
-
 import pytest
 
 
@@ -85,17 +84,12 @@ def test_custom_engine_else_branch_execution():
 
     # Create a custom engine with specific settings
     custom_engine = create_async_engine(
-        "sqlite+aiosqlite:///:memory:",
-        echo=False,
-        pool_pre_ping=True
+        "sqlite+aiosqlite:///:memory:", echo=False, pool_pre_ping=True
     )
 
     # Initialize middleware with custom_engine
     # This should execute line 61: engine = custom_engine
-    middleware = SQLAlchemyMiddleware_local(
-        app,
-        custom_engine=custom_engine
-    )
+    middleware = SQLAlchemyMiddleware_local(app, custom_engine=custom_engine)
 
     # Verify middleware was created
     assert middleware is not None

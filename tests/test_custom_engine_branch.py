@@ -21,20 +21,13 @@ async def test_custom_engine_branch_with_actual_usage():
     SQLAlchemyMiddleware, db = create_middleware_and_session_proxy()
 
     # Create a custom async engine
-    custom_engine = create_async_engine(
-        "sqlite+aiosqlite:///:memory:",
-        echo=False
-    )
+    custom_engine = create_async_engine("sqlite+aiosqlite:///:memory:", echo=False)
 
     app = FastAPI()
 
     # Add middleware with custom_engine
     # This should execute: else: engine = custom_engine (line 61)
-    app.add_middleware(
-        SQLAlchemyMiddleware,
-        custom_engine=custom_engine,
-        commit_on_exit=False
-    )
+    app.add_middleware(SQLAlchemyMiddleware, custom_engine=custom_engine, commit_on_exit=False)
 
     # Create endpoint to test the session works
     @app.get("/test")
@@ -67,10 +60,7 @@ def test_custom_engine_without_db_url():
     # Initialize middleware with ONLY custom_engine (no db_url)
     # This should take the else branch at line 61
     middleware = SQLAlchemyMiddleware(
-        app,
-        custom_engine=custom_engine,
-        engine_args={},
-        session_args={}
+        app, custom_engine=custom_engine, engine_args={}, session_args={}
     )
 
     assert middleware is not None
@@ -89,10 +79,7 @@ def test_custom_engine_with_session_args():
 
     # Use custom engine with session args
     middleware = SQLAlchemyMiddleware(
-        app,
-        custom_engine=custom_engine,
-        session_args={"autoflush": False},
-        commit_on_exit=True
+        app, custom_engine=custom_engine, session_args={"autoflush": False}, commit_on_exit=True
     )
 
     assert middleware is not None

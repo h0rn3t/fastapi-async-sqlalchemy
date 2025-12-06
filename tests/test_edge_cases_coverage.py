@@ -197,11 +197,7 @@ def test_custom_engine_branch():
     custom_engine = create_async_engine("sqlite+aiosqlite:///:memory:")
 
     # This should use the else branch on line 61
-    middleware = SQLAlchemyMiddleware_local(
-        app,
-        custom_engine=custom_engine,
-        commit_on_exit=False
-    )
+    middleware = SQLAlchemyMiddleware_local(app, custom_engine=custom_engine, commit_on_exit=False)
 
     assert middleware is not None
     assert middleware.commit_on_exit is False
@@ -220,22 +216,26 @@ async def test_import_fallback_coverage():
 
     try:
         from sqlalchemy.ext.asyncio import async_sessionmaker
+
         assert async_sessionmaker is not None
         # If we're here, lines 18-19 won't execute
     except ImportError:  # pragma: no cover
         # In older SQLAlchemy, this would execute
         from sqlalchemy.orm import sessionmaker
+
         assert sessionmaker is not None
 
     # Lines 26-27: SQLModel fallback
     # These lines execute when SQLModel is NOT installed
     try:
         from sqlmodel.ext.asyncio.session import AsyncSession as SQLModelAsyncSession
+
         # If SQLModel is available, line 27 won't execute
         assert SQLModelAsyncSession is not None
     except ImportError:
         # Line 27 would execute if SQLModel not available
         from sqlalchemy.ext.asyncio import AsyncSession
+
         assert AsyncSession is not None
 
 

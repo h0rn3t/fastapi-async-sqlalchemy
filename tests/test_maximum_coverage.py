@@ -110,6 +110,7 @@ async def test_multi_session_multiple_tasks_with_cleanup():
         nonlocal cleanup_count
 
         async with db(multi_sessions=True, commit_on_exit=True):
+
             async def execute_with_session(value: int):
                 nonlocal cleanup_count
                 session = db.session
@@ -129,10 +130,7 @@ async def test_multi_session_multiple_tasks_with_cleanup():
                 return result.scalar()
 
             # Create multiple tasks
-            tasks = [
-                asyncio.create_task(execute_with_session(i))
-                for i in range(5)
-            ]
+            tasks = [asyncio.create_task(execute_with_session(i)) for i in range(5)]
 
             results = await asyncio.gather(*tasks)
             return {"results": results, "session_count": len(set(session_ids))}
@@ -151,10 +149,12 @@ def test_import_fallback_async_sessionmaker():
     # The fallback is only used on older SQLAlchemy versions
     try:
         from sqlalchemy.ext.asyncio import async_sessionmaker
+
         assert async_sessionmaker is not None
     except ImportError:  # pragma: no cover
         # If async_sessionmaker doesn't exist, the fallback should work
         from sqlalchemy.orm import sessionmaker
+
         assert sessionmaker is not None
 
 
@@ -169,6 +169,7 @@ def test_import_fallback_sqlmodel():
     # Check if SQLModel is available
     try:
         from sqlmodel.ext.asyncio.session import AsyncSession as SQLModelAsyncSession
+
         # If SQLModel is available, DefaultAsyncSession should be SQLModelAsyncSession
         assert DefaultAsyncSession == SQLModelAsyncSession
     except ImportError:
@@ -298,18 +299,12 @@ def test_middleware_commit_on_exit_parameter():
     app = FastAPI()
 
     # Test with commit_on_exit=True
-    middleware = SQLAlchemyMiddleware_local(
-        app,
-        db_url="sqlite+aiosqlite://",
-        commit_on_exit=True
-    )
+    middleware = SQLAlchemyMiddleware_local(app, db_url="sqlite+aiosqlite://", commit_on_exit=True)
     assert middleware.commit_on_exit is True
 
     # Test with commit_on_exit=False
     middleware2 = SQLAlchemyMiddleware_local(
-        app,
-        db_url="sqlite+aiosqlite://",
-        commit_on_exit=False
+        app, db_url="sqlite+aiosqlite://", commit_on_exit=False
     )
     assert middleware2.commit_on_exit is False
 
@@ -326,10 +321,7 @@ def test_engine_args_and_session_args():
     session_args = {"autoflush": False}
 
     middleware = SQLAlchemyMiddleware_local(
-        app,
-        db_url="sqlite+aiosqlite://",
-        engine_args=engine_args,
-        session_args=session_args
+        app, db_url="sqlite+aiosqlite://", engine_args=engine_args, session_args=session_args
     )
 
     assert middleware is not None
@@ -421,6 +413,7 @@ async def test_task_done_callback_cleanup():
     @app.get("/test_callback")
     async def test_callback():
         async with db(multi_sessions=True, commit_on_exit=True):
+
             async def task_function():
                 session = db.session
                 await session.execute(text("SELECT 1"))
