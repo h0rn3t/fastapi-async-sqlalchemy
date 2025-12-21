@@ -1,8 +1,8 @@
 """
 Tests to improve code coverage for edge cases and fallback imports.
 """
+
 import asyncio
-import sys
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -18,8 +18,6 @@ async def test_cleanup_callback_with_closed_loop():
     """Test cleanup callback when event loop is closed."""
     app = FastAPI()
     app.add_middleware(SQLAlchemyMiddleware, db_url="sqlite+aiosqlite:///:memory:")
-
-    cleanup_called = False
 
     @app.get("/test_closed_loop")
     async def test_closed_loop():
@@ -49,6 +47,7 @@ async def test_cleanup_callback_runtime_error():
     @app.get("/test_runtime_error")
     async def test_runtime_error():
         async with db(multi_sessions=True):
+
             async def child_task():
                 session = db.session
                 await session.execute(text("SELECT 42"))
@@ -76,6 +75,7 @@ async def test_multiple_child_tasks_cleanup():
     async def test_multiple_cleanup():
         results = []
         async with db(multi_sessions=True):
+
             async def child_task(n):
                 session = db.session
                 result = await session.execute(text(f"SELECT {n}"))
@@ -96,26 +96,27 @@ def test_import_coverage_markers():
     """Test that import fallback code paths are marked for coverage."""
     # This test ensures that import fallback blocks are properly marked
     # even if they can't be executed in the current environment
-    
+
     # The actual imports happen at module load time, so we can't test them
     # directly without manipulating sys.modules before import.
     # Instead, we verify the code exists and is syntactically correct.
-    
+
     import fastapi_async_sqlalchemy.middleware as middleware_module
-    
+
     # Verify that DefaultAsyncSession is set
-    assert hasattr(middleware_module, 'DefaultAsyncSession')
-    
+    assert hasattr(middleware_module, "DefaultAsyncSession")
+
     # Check if we're using SQLModel or plain AsyncSession
     from sqlalchemy.ext.asyncio import AsyncSession
+
     assert issubclass(middleware_module.DefaultAsyncSession, AsyncSession)
 
 
-@pytest.mark.asyncio  
+@pytest.mark.asyncio
 async def test_current_task_none_scenario():
     """
     Test scenario where asyncio.current_task() might return None.
-    
+
     Note: This is extremely rare in practice and hard to reproduce,
     as current_task() only returns None when called outside an event loop.
     The middleware already requires an event loop, so this edge case
@@ -129,12 +130,12 @@ async def test_current_task_none_scenario():
         # Verify we're in a task context
         task = asyncio.current_task()
         assert task is not None, "Should have current task in request context"
-        
+
         async with db(multi_sessions=True):
             # Access session within task context
             session = db.session
-            result = await session.execute(text("SELECT 1"))
-            
+            await session.execute(text("SELECT 1"))
+
         return {"success": True}
 
     client = TestClient(app)
@@ -174,7 +175,6 @@ async def test_current_task_none_with_mock():
     This is an edge case that's nearly impossible in real async code,
     but we test it for completeness.
     """
-    from unittest.mock import patch
 
     app = FastAPI()
     app.add_middleware(SQLAlchemyMiddleware, db_url="sqlite+aiosqlite:///:memory:")
@@ -182,7 +182,7 @@ async def test_current_task_none_with_mock():
     @app.get("/test_none_task")
     async def test_none_task():
         # Temporarily mock current_task to return None
-        with patch('asyncio.current_task', return_value=None):
+        with patch("asyncio.current_task", return_value=None):
             async with db(multi_sessions=True):
                 try:
                     _ = db.session  # This should raise RuntimeError
@@ -206,7 +206,6 @@ async def test_cleanup_callback_with_mocked_closed_loop():
     This is a direct test of the cleanup_callback function to ensure
     it handles the closed loop case properly (lines 109-110).
     """
-    from unittest.mock import MagicMock, patch
 
     # We need to test the cleanup callback directly
     # First, let's access the session property to trigger session creation with cleanup
@@ -219,7 +218,6 @@ async def test_cleanup_callback_with_mocked_closed_loop():
     async def test_mock_closed():
         async with db(multi_sessions=True):
             # Patch get_running_loop inside the cleanup callback
-            original_get_running_loop = asyncio.get_running_loop
 
             async def child_with_mock():
                 session = db.session
@@ -236,7 +234,7 @@ async def test_cleanup_callback_with_mocked_closed_loop():
                 callback_executed.append("closed_loop_path")
                 return loop
 
-            with patch('asyncio.get_running_loop', side_effect=mock_get_running_loop_closed):
+            with patch("asyncio.get_running_loop", side_effect=mock_get_running_loop_closed):
                 task = asyncio.create_task(child_with_mock())
                 await task
                 # Task is done, cleanup callback will execute with mocked get_running_loop
@@ -255,7 +253,6 @@ async def test_cleanup_callback_with_runtime_error():
 
     This tests the except RuntimeError branch (lines 111-112).
     """
-    from unittest.mock import patch
 
     app = FastAPI()
     app.add_middleware(SQLAlchemyMiddleware, db_url="sqlite+aiosqlite:///:memory:")
@@ -265,6 +262,7 @@ async def test_cleanup_callback_with_runtime_error():
     @app.get("/test_runtime_error")
     async def test_runtime_error():
         async with db(multi_sessions=True):
+
             async def child_with_runtime_error():
                 session = db.session
                 await session.execute(text("SELECT 1"))
@@ -275,7 +273,7 @@ async def test_cleanup_callback_with_runtime_error():
                 callback_executed.append("runtime_error_path")
                 raise RuntimeError("No running event loop")
 
-            with patch('asyncio.get_running_loop', side_effect=mock_get_running_loop_error):
+            with patch("asyncio.get_running_loop", side_effect=mock_get_running_loop_error):
                 task = asyncio.create_task(child_with_runtime_error())
                 await task
                 # Cleanup callback will execute and hit the RuntimeError path
