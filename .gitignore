@@ -12,3 +12,7 @@ htmlcov/
 test.py
 *.egg-info
 coverage.xml
+.agent/
+CLAUDE.md
+.DS_Store
+.kiro/

@@ -103,29 +103,14 @@ async def test_multi_session_multiple_tasks_with_cleanup():
     app.add_middleware(SQLAlchemyMiddleware, db_url="sqlite+aiosqlite:///:memory:")
 
     session_ids = []
-    cleanup_count = 0
 
     @app.get("/test_multi_cleanup")
     async def test_multi_cleanup():
-        nonlocal cleanup_count
-
         async with db(multi_sessions=True, commit_on_exit=True):
 
             async def execute_with_session(value: int):
-                nonlocal cleanup_count
                 session = db.session
                 session_ids.append(id(session))
-
-                # Track cleanup calls
-                original_close = session.close
-
-                async def tracking_close():
-                    nonlocal cleanup_count
-                    cleanup_count += 1
-                    await original_close()
-
-                session.close = tracking_close
-
                 result = await session.execute(text(f"SELECT {value}"))
                 return result.scalar()
 
@@ -138,9 +123,6 @@ async def test_multi_session_multiple_tasks_with_cleanup():
     client = TestClient(app)
     response = client.get("/test_multi_cleanup")
     assert response.status_code == 200
-
-    # Give cleanup tasks time to complete
-    await asyncio.sleep(0.2)
 
 
 def test_import_fallback_async_sessionmaker():
@@ -232,12 +214,12 @@ async def test_multi_session_mode_context_vars():
     async def test_context_vars():
         # Before multi_sessions context
         async with db(multi_sessions=True, commit_on_exit=True):
-            # Inside multi_sessions context, each access creates new session
+            # Inside multi_sessions context, same task gets same session
             session1 = db.session
             session2 = db.session
 
-            # Should be different sessions
-            assert id(session1) != id(session2)
+            # Should be the same session within the same task
+            assert id(session1) == id(session2)
 
             return {"status": "ok"}
 

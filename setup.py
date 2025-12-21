@@ -26,7 +26,7 @@ setup(
     packages=["fastapi_async_sqlalchemy"],
     package_data={"fastapi_async_sqlalchemy": ["py.typed"]},
     zip_safe=False,
-    python_requires=">=3.7",
+    python_requires=">=3.9",
     install_requires=["starlette>=0.13.6", "SQLAlchemy>=1.4.19"],
     classifiers=[
         "Development Status :: 5 - Production/Stable",
@@ -35,8 +35,6 @@ setup(
         "Intended Audience :: Developers",
         "License :: OSI Approved :: MIT License",
         "Operating System :: OS Independent",
-        "Programming Language :: Python :: 3.7",
-        "Programming Language :: Python :: 3.8",
         "Programming Language :: Python :: 3.9",
         "Programming Language :: Python :: 3.10",
         "Programming Language :: Python :: 3.11",

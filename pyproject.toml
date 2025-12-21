@@ -1,6 +1,6 @@
 [tool.ruff]
 line-length = 100
-target-version = "py37"
+target-version = "py39"
 exclude = [
     ".git",
     ".venv",
@@ -31,3 +31,9 @@ line-ending = "auto"
 [tool.ruff.lint.isort]
 combine-as-imports = true
 split-on-trailing-comma = true
+
+[tool.pytest.ini_options]
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore:The garbage collector is trying to clean up:sqlalchemy.exc.SAWarning",
+]

@@ -1,6 +1,7 @@
-import warnings
+import asyncio
 from contextvars import ContextVar
-from typing import Dict, Optional, Set, Type, Union
+from dataclasses import dataclass, field
+from typing import Optional, Union
 
 from sqlalchemy.engine.url import URL
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, create_async_engine
@@ -18,35 +19,40 @@ try:
 except ImportError:
     from sqlalchemy.orm import sessionmaker as async_sessionmaker  # type: ignore
 
-# Try to import SQLModel's AsyncSession which has the .exec() method
 try:
     from sqlmodel.ext.asyncio.session import AsyncSession as SQLModelAsyncSession
 
-    DefaultAsyncSession: Type[AsyncSession] = SQLModelAsyncSession  # type: ignore
+    DefaultAsyncSession: type[AsyncSession] = SQLModelAsyncSession  # type: ignore
 except ImportError:
-    DefaultAsyncSession: Type[AsyncSession] = AsyncSession  # type: ignore
+    DefaultAsyncSession: type[AsyncSession] = AsyncSession  # type: ignore
+
+
+@dataclass(slots=True)
+class MultiSessionState:
+    """State for multi_sessions mode."""
+
+    tracked: set[AsyncSession] = field(default_factory=set)
+    task_sessions: dict[int, AsyncSession] = field(default_factory=dict)
+    cleanup_tasks: list[asyncio.Task] = field(default_factory=list)
+    parent_task_id: int = 0
+    commit_on_exit: bool = False
 
 
 def create_middleware_and_session_proxy() -> tuple:
     _Session: Optional[async_sessionmaker] = None
     _session: ContextVar[Optional[AsyncSession]] = ContextVar("_session", default=None)
-    _multi_sessions_ctx: ContextVar[bool] = ContextVar("_multi_sessions_context", default=False)
-    _commit_on_exit_ctx: ContextVar[bool] = ContextVar("_commit_on_exit_ctx", default=False)
-    _tracked_sessions: ContextVar[Optional[Set[AsyncSession]]] = ContextVar(
-        "_tracked_sessions", default=None
-    )
-    # Usage of context vars inside closures is not recommended, since they are not properly
-    # garbage collected, but in our use case context var is created on program startup and
-    # is used throughout the whole its lifecycle.
+    _multi_state: ContextVar[Optional[MultiSessionState]] = ContextVar("_multi_state", default=None)
 
-    class SQLAlchemyMiddleware(BaseHTTPMiddleware):
+    class _SQLAlchemyMiddleware(BaseHTTPMiddleware):
+        __test__ = False  # Prevent pytest from collecting this as a test class
+
         def __init__(
             self,
             app: ASGIApp,
             db_url: Optional[Union[str, URL]] = None,
             custom_engine: Optional[AsyncEngine] = None,
-            engine_args: Optional[Dict] = None,
-            session_args: Optional[Dict] = None,
+            engine_args: Optional[dict] = None,
+            session_args: Optional[dict] = None,
             commit_on_exit: bool = False,
         ):
             super().__init__(app)
@@ -56,12 +62,10 @@ def create_middleware_and_session_proxy() -> tuple:
 
             if not custom_engine and not db_url:
                 raise ValueError("You need to pass a db_url or a custom_engine parameter.")
-            if not custom_engine:
-                if db_url is None:
-                    raise ValueError("db_url cannot be None when custom_engine is not provided")
-                engine = create_async_engine(db_url, **engine_args)
-            else:
+            if custom_engine:
                 engine = custom_engine
+            else:
+                engine = create_async_engine(db_url, **engine_args)
 
             nonlocal _Session
             _Session = async_sessionmaker(
@@ -82,44 +86,47 @@ def create_middleware_and_session_proxy() -> tuple:
             if _Session is None:
                 raise SessionNotInitialisedError
 
-            multi_sessions = _multi_sessions_ctx.get()
-            if multi_sessions:
-                """In this case, we need to create a new session for each task.
-                We also need to commit the session on exit if commit_on_exit is True.
-                This is useful when we need to run multiple queries in parallel.
-                For example, when we need to run multiple queries in parallel in a route handler.
-                Example:
-                ```python
-                    async with db(multi_sessions=True):
-                        async def execute_query(query):
-                            return await db.session.execute(text(query))
+            state = _multi_state.get()
+            if state is not None:
+                task = asyncio.current_task()
+                if task is None:
+                    raise RuntimeError("Cannot get current task")
+                task_id = id(task)
 
-                        tasks = [
-                            asyncio.create_task(execute_query("SELECT 1")),
-                            asyncio.create_task(execute_query("SELECT 2")),
-                            asyncio.create_task(execute_query("SELECT 3")),
-                            asyncio.create_task(execute_query("SELECT 4")),
-                            asyncio.create_task(execute_query("SELECT 5")),
-                            asyncio.create_task(execute_query("SELECT 6")),
-                        ]
+                if task_id in state.task_sessions:
+                    return state.task_sessions[task_id]
 
-                        await asyncio.gather(*tasks)
-                ```
-                """
-                # Always create a new session for each access when multi_sessions=True
                 session = _Session()
+                state.task_sessions[task_id] = session
+                state.tracked.add(session)
 
-                # Track the session for cleanup in __aexit__
-                tracked = _tracked_sessions.get()
-                if tracked is not None:
-                    tracked.add(session)
-                else:
-                    warnings.warn(
-                        """Session created in multi_sessions mode but no tracking set found.
-                        This session may leak if not properly closed.""",
-                        ResourceWarning,
-                        stacklevel=2,
-                    )
+                # Add cleanup callback only for child tasks
+                if task_id != state.parent_task_id:
+
+                    def cleanup_callback(_task):
+                        try:
+                            loop = asyncio.get_running_loop()
+                            if loop.is_closed():
+                                return
+                        except RuntimeError:
+                            return
+
+                        async def cleanup():
+                            try:
+                                if state.commit_on_exit:
+                                    try:
+                                        await session.commit()
+                                    except Exception:
+                                        await session.rollback()
+                            finally:
+                                await session.close()
+                                state.tracked.discard(session)
+                                state.task_sessions.pop(task_id, None)
+
+                        t = loop.create_task(cleanup())
+                        state.cleanup_tasks.append(t)
+
+                    task.add_done_callback(cleanup_callback)
 
                 return session
             else:
@@ -131,13 +138,12 @@ def create_middleware_and_session_proxy() -> tuple:
     class DBSession(metaclass=DBSessionMeta):
         def __init__(
             self,
-            session_args: Optional[Dict] = None,
+            session_args: Optional[dict] = None,
             commit_on_exit: bool = False,
             multi_sessions: bool = False,
         ):
             self.token = None
-            self.commit_on_exit_token = None
-            self.tracked_sessions_token = None
+            self.multi_state_token = None
             self.session_args = session_args or {}
             self.commit_on_exit = commit_on_exit
             self.multi_sessions = multi_sessions
@@ -147,65 +153,44 @@ def create_middleware_and_session_proxy() -> tuple:
                 raise SessionNotInitialisedError
 
             if self.multi_sessions:
-                self.multi_sessions_token = _multi_sessions_ctx.set(True)
-                self.commit_on_exit_token = _commit_on_exit_ctx.set(self.commit_on_exit)
-                self.tracked_sessions_token = _tracked_sessions.set(set())
+                state = MultiSessionState(
+                    parent_task_id=id(asyncio.current_task()),
+                    commit_on_exit=self.commit_on_exit,
+                )
+                self.multi_state_token = _multi_state.set(state)
             else:
                 self.token = _session.set(_Session(**self.session_args))
             return type(self)
 
         async def __aexit__(self, exc_type, exc_value, traceback):
             if self.multi_sessions:
-                # Clean up all tracked sessions
-                tracked_sessions = _tracked_sessions.get()
-                if tracked_sessions:
-                    cleanup_errors = []
-                    for session in tracked_sessions:
-                        try:
-                            if exc_type is not None:
-                                await session.rollback()
-                            elif self.commit_on_exit:
-                                try:
-                                    await session.commit()
-                                except Exception as commit_error:
-                                    warnings.warn(
-                                        f"Failed to commit in multi_sessions: {commit_error}",
-                                        RuntimeWarning,
-                                        stacklevel=2,
-                                    )
-                                    await session.rollback()
-                                    cleanup_errors.append(commit_error)
-                        except Exception as cleanup_error:
-                            warnings.warn(
-                                f"Failed to rollback session in multi_sessions: {cleanup_error}",
-                                RuntimeWarning,
-                                stacklevel=2,
-                            )
-                            cleanup_errors.append(cleanup_error)
-                        finally:
+                state = _multi_state.get()
+
+                # Wait for cleanup tasks
+                if state.cleanup_tasks:
+                    await asyncio.sleep(0)
+                    await asyncio.gather(*state.cleanup_tasks, return_exceptions=True)
+
+                # Clean up remaining sessions
+                for session in list(state.tracked):
+                    try:
+                        if exc_type is not None:
+                            await session.rollback()
+                        elif self.commit_on_exit:
                             try:
-                                await session.close()
-                            except Exception as close_error:
-                                warnings.warn(
-                                    f"Failed to close session in multi_session: {close_error}",
-                                    ResourceWarning,
-                                    stacklevel=2,
-                                )
-                                cleanup_errors.append(close_error)
+                                await session.commit()
+                            except Exception:
+                                await session.rollback()
+                    except Exception:
+                        pass
+                    finally:
+                        try:
+                            await session.close()
+                        except Exception:
+                            pass
 
-                    if cleanup_errors and exc_type is None:
-                        warnings.warn(
-                            f"Encountered {len(cleanup_errors)} error(s) during session cleanup",
-                            RuntimeWarning,
-                            stacklevel=2,
-                        )
-
-                # Reset context vars
-                _tracked_sessions.reset(self.tracked_sessions_token)
-                _multi_sessions_ctx.reset(self.multi_sessions_token)
-                _commit_on_exit_ctx.reset(self.commit_on_exit_token)
+                _multi_state.reset(self.multi_state_token)
             else:
-                # Standard single-session mode
                 session = _session.get()
                 try:
                     if exc_type is not None:
@@ -220,7 +205,7 @@ def create_middleware_and_session_proxy() -> tuple:
                     await session.close()
                     _session.reset(self.token)
 
-    return SQLAlchemyMiddleware, DBSession
+    return _SQLAlchemyMiddleware, DBSession
 
 
 SQLAlchemyMiddleware, db = create_middleware_and_session_proxy()
