@@ -20,7 +20,6 @@ Solutions:
 """
 
 import asyncio
-import os
 
 import pytest
 from sqlalchemy import text
@@ -433,10 +432,7 @@ async def test_production_error_exact_reproduction(app, db, SQLAlchemyMiddleware
 
             assert total == 50  # Half of the processes are "running"
             assert len(processes) == 10
-            print(
-                "SQLite allowed concurrent queries - "
-                "but this WILL fail with PostgreSQL/asyncpg"
-            )
+            print("SQLite allowed concurrent queries - but this WILL fail with PostgreSQL/asyncpg")
 
         except Exception as e:
             # Expected with PostgreSQL/MySQL

@@ -111,7 +111,12 @@ async def test_production_pattern_without_changes(app, db, SQLAlchemyMiddleware)
         )
         for i in range(100):
             await db.session.execute(
-                text("INSERT INTO processes (name, status, created_at) VALUES (:name, :status, :created_at)"),
+                text(
+                    """INSERT INTO
+                           processes (name, status, created_at)
+                       VALUES (:name, :status, :created_at)
+                    """
+                ),
                 {
                     "name": f"process_{i}",
                     "status": "running" if i % 2 == 0 else "stopped",
@@ -191,7 +196,9 @@ async def test_rollback_on_error_with_parallel_queries(app, db, SQLAlchemyMiddle
     # Try to insert with error - should rollback all
     try:
         async with db(commit_on_exit=True):
-            await db.session.execute(text("INSERT INTO rollback_test (value) VALUES ('should_rollback')"))
+            await db.session.execute(
+                text("INSERT INTO rollback_test (value) VALUES ('should_rollback')")
+            )
             # Force an error
             raise RuntimeError("Simulated error")
     except RuntimeError:
