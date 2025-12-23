@@ -170,10 +170,10 @@ async def test_edge_case_loop_closing_during_cleanup():
 @pytest.mark.asyncio
 async def test_current_task_none_with_mock():
     """
-    Test RuntimeError when current_task() returns None.
+    Test behavior when current_task() returns None (sync context fallback).
 
-    This is an edge case that's nearly impossible in real async code,
-    but we test it for completeness.
+    After the backward compatibility fix, this now creates a session for sync context
+    instead of raising RuntimeError.
     """
 
     app = FastAPI()
@@ -184,18 +184,18 @@ async def test_current_task_none_with_mock():
         # Temporarily mock current_task to return None
         with patch("asyncio.current_task", return_value=None):
             async with db(multi_sessions=True):
-                try:
-                    _ = db.session  # This should raise RuntimeError
-                    return {"error": "Should have raised RuntimeError"}
-                except RuntimeError as e:
-                    if "Cannot get current task" in str(e):
-                        return {"success": True}
-                    raise
+                # After backward compatibility fix, this should work
+                # by falling back to sync context session
+                session = db.session
+                if session is not None:
+                    return {"success": True, "has_session": True}
+                return {"error": "Session is None"}
 
     client = TestClient(app)
     response = client.get("/test_none_task")
     assert response.status_code == 200
     assert response.json()["success"] is True
+    assert response.json()["has_session"] is True
 
 
 @pytest.mark.asyncio

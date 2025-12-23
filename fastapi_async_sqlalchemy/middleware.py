@@ -88,48 +88,61 @@ def create_middleware_and_session_proxy() -> tuple:
 
             state = _multi_state.get()
             if state is not None:
-                task = asyncio.current_task()
-                if task is None:
-                    raise RuntimeError("Cannot get current task")
-                task_id = id(task)
+                try:
+                    task = asyncio.current_task()
+                except RuntimeError:
+                    # No running event loop (sync context), fall back to single session
+                    task = None
 
-                if task_id in state.task_sessions:
-                    return state.task_sessions[task_id]
+                if task is not None:
+                    task_id = id(task)
 
-                session = _Session()
-                state.task_sessions[task_id] = session
-                state.tracked.add(session)
+                    if task_id in state.task_sessions:
+                        return state.task_sessions[task_id]
 
-                # Add cleanup callback only for child tasks
-                if task_id != state.parent_task_id:
+                    session = _Session()
+                    state.task_sessions[task_id] = session
+                    state.tracked.add(session)
 
-                    def cleanup_callback(_task):
-                        try:
-                            loop = asyncio.get_running_loop()
-                            if loop.is_closed():
-                                return
-                        except RuntimeError:
-                            return
+                    # Add cleanup callback only for child tasks
+                    if task_id != state.parent_task_id:
 
-                        async def cleanup():
+                        def cleanup_callback(_task):
                             try:
-                                if state.commit_on_exit:
-                                    try:
-                                        await session.commit()
-                                    except Exception:
-                                        await session.rollback()
-                            finally:
-                                await session.close()
-                                state.tracked.discard(session)
-                                state.task_sessions.pop(task_id, None)
+                                loop = asyncio.get_running_loop()
+                                if loop.is_closed():
+                                    return
+                            except RuntimeError:
+                                return
 
-                        t = loop.create_task(cleanup())
-                        state.cleanup_tasks.append(t)
+                            async def cleanup():
+                                try:
+                                    if state.commit_on_exit:
+                                        try:
+                                            await session.commit()
+                                        except Exception:
+                                            await session.rollback()
+                                finally:
+                                    await session.close()
+                                    state.tracked.discard(session)
+                                    state.task_sessions.pop(task_id, None)
 
-                    task.add_done_callback(cleanup_callback)
+                            t = loop.create_task(cleanup())
+                            state.cleanup_tasks.append(t)
 
-                return session
+                        task.add_done_callback(cleanup_callback)
+
+                    return session
+                else:
+                    # Sync context - create a session and track it for cleanup
+                    # Use parent_task_id as key for sync context
+                    if state.parent_task_id not in state.task_sessions:
+                        session = _Session()
+                        state.task_sessions[state.parent_task_id] = session
+                        state.tracked.add(session)
+                    return state.task_sessions[state.parent_task_id]
             else:
+                # Fallback to single session mode
                 session = _session.get()
                 if session is None:
                     raise MissingSessionError
@@ -165,30 +178,26 @@ def create_middleware_and_session_proxy() -> tuple:
         async def __aexit__(self, exc_type, exc_value, traceback):
             if self.multi_sessions:
                 state = _multi_state.get()
-
-                # Wait for cleanup tasks
-                if state.cleanup_tasks:
+                if state and state.cleanup_tasks:
                     await asyncio.sleep(0)
                     await asyncio.gather(*state.cleanup_tasks, return_exceptions=True)
-
-                # Clean up remaining sessions
-                for session in list(state.tracked):
-                    try:
-                        if exc_type is not None:
-                            await session.rollback()
-                        elif self.commit_on_exit:
-                            try:
-                                await session.commit()
-                            except Exception:
-                                await session.rollback()
-                    except Exception:
-                        pass
-                    finally:
+                if state:
+                    for session in list(state.tracked):
                         try:
-                            await session.close()
+                            if exc_type is not None:
+                                await session.rollback()
+                            elif self.commit_on_exit:
+                                try:
+                                    await session.commit()
+                                except Exception:
+                                    await session.rollback()
                         except Exception:
                             pass
-
+                        finally:
+                            try:
+                                await session.close()
+                            except Exception:
+                                pass
                 _multi_state.reset(self.multi_state_token)
             else:
                 session = _session.get()
@@ -196,11 +205,7 @@ def create_middleware_and_session_proxy() -> tuple:
                     if exc_type is not None:
                         await session.rollback()
                     elif self.commit_on_exit:
-                        try:
-                            await session.commit()
-                        except Exception:
-                            await session.rollback()
-                            raise
+                        await session.commit()
                 finally:
                     await session.close()
                     _session.reset(self.token)
