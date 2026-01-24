@@ -213,13 +213,12 @@ async def test_multi_session_mode_context_vars():
     @app.get("/test_context_vars")
     async def test_context_vars():
         async with db(multi_sessions=True, commit_on_exit=True):
-            # Each db.session access creates a new session in multi_sessions mode
             session1 = db.session
             session2 = db.session
 
-            # Different sessions are created for each access
             assert session1 is not None
             assert session2 is not None
+            assert session1 is session2
 
             return {"status": "ok"}
 

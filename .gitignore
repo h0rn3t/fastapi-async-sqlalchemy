@@ -16,3 +16,4 @@ coverage.xml
 CLAUDE.md
 .DS_Store
 .kiro/
+test.db

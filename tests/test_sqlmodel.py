@@ -241,21 +241,19 @@ async def test_sqlmodel_exec_multi_sessions(app, db, SQLAlchemyMiddleware):
     app.add_middleware(SQLAlchemyMiddleware, db_url=db_url)
 
     async with db(multi_sessions=True):
-        # Create tables using the session's bind engine
         async with db.session.bind.begin() as conn:
             await conn.run_sync(SQLModel.metadata.create_all)
 
-        # Test that each session access gets a new session with exec method
         session1 = db.session
         session2 = db.session
         session3 = db.session
 
-        # All sessions should have exec method
         assert hasattr(session1, "exec")
         assert hasattr(session2, "exec")
         assert hasattr(session3, "exec")
+        assert session1 is session2
+        assert session2 is session3
 
-        # Test basic exec query on one session
         query = select(Hero)
         result = await session1.exec(query)
         heroes = result.all()

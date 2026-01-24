@@ -3,6 +3,7 @@ Additional edge case tests to maximize coverage
 Targets specific uncovered lines in middleware.py
 """
 
+import asyncio
 import warnings
 
 import pytest
@@ -247,16 +248,21 @@ async def test_multi_session_cleanup_all_paths():
 
     @app.get("/test_comprehensive")
     async def test_comprehensive():
-        # Test normal cleanup
         async with db(multi_sessions=True, commit_on_exit=True):
-            # Create multiple sessions
             sessions = []
-            for i in range(3):
+            tasks = []
+
+            async def run_query(value: int):
                 session = db.session
                 sessions.append(session)
-                await session.execute(text(f"SELECT {i}"))
+                await session.execute(text(f"SELECT {value}"))
 
-        return {"session_count": len(sessions)}
+            for i in range(3):
+                tasks.append(asyncio.create_task(run_query(i)))
+
+            await asyncio.gather(*tasks)
+
+        return {"session_count": len(set(sessions))}
 
     client = TestClient(app)
     response = client.get("/test_comprehensive")

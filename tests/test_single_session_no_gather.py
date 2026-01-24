@@ -58,18 +58,38 @@ async def test_multi_sessions_gather_with_tasks(app, db, SQLAlchemyMiddleware):
     """asyncio.gather() with multi_sessions=True and create_task should work."""
     app.add_middleware(SQLAlchemyMiddleware, db_url=db_url)
 
-    async with db(multi_sessions=True):
+    try:
+        async with db(multi_sessions=True):
+            print("Entering async with block")
+            async def query(n):
+                print(f"Query {n} starting")
+                try:
+                    # await asyncio.sleep(0.1)
+                    res = await db.session.execute(text(f"SELECT {n}"))
+                    print(f"Query {n} done")
+                    return res
+                except BaseException as e:
+                    print(f"Query {n} failed with {type(e)}")
+                    raise
 
-        async def query(n):
-            return await db.session.execute(text(f"SELECT {n}"))
+            tasks = [
+                asyncio.create_task(query(1)),
+                asyncio.create_task(query(2)),
+            ]
+            print("Tasks created, gathering")
+            try:
+                results = await asyncio.gather(*tasks)
+                print("Gather done")
+            except BaseException as e:
+                print(f"Gather failed with {type(e)}")
+                raise
 
-        tasks = [
-            asyncio.create_task(query(1)),
-            asyncio.create_task(query(2)),
-        ]
-        results = await asyncio.gather(*tasks)
-        assert results[0].scalar() == 1
-        assert results[1].scalar() == 2
+            assert results[0].scalar() == 1
+            assert results[1].scalar() == 2
+            print("Assertions passed")
+    except BaseException as e:
+        print(f"Test failed with {type(e)}")
+        raise
 
 
 @pytest.mark.asyncio
