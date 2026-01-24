@@ -139,14 +139,11 @@ def create_middleware_and_session_proxy() -> tuple:
 
                 task = asyncio.current_task()
                 task_id = id(task) if task is not None else None
-                print(f"DEBUG: db.session requested by task {task_id}")
 
                 if task_id is not None and task_id in state.task_sessions:
-                    print(f"DEBUG: Returning existing session for task {task_id}")
                     return state.task_sessions[task_id]
 
                 session = _Session(**state.session_args)
-                print(f"DEBUG: Created new session {id(session)} for task {task_id}")
                 state.tracked.add(session)
                 if task_id is not None:
                     state.task_sessions[task_id] = session
@@ -159,37 +156,43 @@ def create_middleware_and_session_proxy() -> tuple:
 
                 def cleanup_callback(finished_task: asyncio.Task) -> None:
                     async def cleanup() -> None:
-                        # Check if session is still tracked (not cleaned up by __aexit__)
-                        # This check and discard is atomic in asyncio
-                        if session not in state.tracked:
-                            return
-                        state.tracked.discard(session)
-
                         task_exception: BaseException | None
                         try:
                             task_exception = finished_task.exception()
                         except (asyncio.CancelledError, GeneratorExit) as e:
-                            # Handle cancellation and GeneratorExit explicitly
                             task_exception = e
                         except BaseException as error:
                             task_exception = error
-                        
+
+                        if task_exception is None:
+                            if task_id is not None:
+                                state.task_sessions.pop(task_id, None)
+                            return
+
+                        if session not in state.tracked:
+                            return
+                        state.tracked.discard(session)
+
                         await _finalize_session(
                             session,
                             commit_on_exit=state.commit_on_exit,
                             exc=task_exception,
                         )
-                        
+
                         if task_id is not None:
                             state.task_sessions.pop(task_id, None)
 
                     if current_loop and not current_loop.is_closed():
-                        current_loop.call_soon(lambda: state.cleanup_tasks.append(asyncio.create_task(cleanup())))
+                        def schedule_cleanup() -> None:
+                            cleanup_task = current_loop.create_task(cleanup())
+                            state.cleanup_tasks.append(cleanup_task)
+
+                        current_loop.call_soon(schedule_cleanup)
                     else:
                         warnings.warn("No running event loop during cleanup", stacklevel=2)
 
-                # if task is not None and task_id != state.parent_task_id:
-                #     task.add_done_callback(cleanup_callback)
+                if task is not None and task_id != state.parent_task_id:
+                    task.add_done_callback(cleanup_callback)
                 return session
             else:
                 session = _session.get()
@@ -231,19 +234,15 @@ def create_middleware_and_session_proxy() -> tuple:
 
         async def __aexit__(self, exc_type, exc_value, traceback):
             if self.multi_sessions:
-                print(f"__aexit__ starting multi_sessions cleanup. exc={exc_type}")
                 _multi_sessions_ctx.reset(self.multi_sessions_token)
                 state = _multi_state.get()
                 if state is not None:
                     if state.cleanup_tasks:
-                        print(f"__aexit__ waiting for {len(state.cleanup_tasks)} cleanup tasks")
                         await asyncio.gather(*state.cleanup_tasks, return_exceptions=True)
-                        print("__aexit__ cleanup tasks finished")
                     exc = exc_value if exc_type is not None else None
                     # Claim all remaining sessions to prevent concurrent cleanup
                     sessions_to_finalize = list(state.tracked)
                     state.tracked.clear()
-                    print(f"__aexit__ finalizing {len(sessions_to_finalize)} remaining sessions")
 
                     for session in sessions_to_finalize:
                         await _finalize_session(
@@ -252,7 +251,6 @@ def create_middleware_and_session_proxy() -> tuple:
                             exc=exc,
                         )
                 _multi_state.reset(self.multi_state_token)
-                print("__aexit__ finished")
             else:
                 session = _session.get()
                 try:
