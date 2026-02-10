@@ -7,11 +7,10 @@ by queuing tasks that exceed the pool capacity.
 
 import asyncio
 import sys
-import time
 
 import pytest
 from sqlalchemy import text
-from sqlalchemy.pool import AsyncAdaptedQueuePool, StaticPool
+from sqlalchemy.pool import AsyncAdaptedQueuePool
 
 db_url = "sqlite+aiosqlite://"
 
@@ -230,7 +229,7 @@ async def test_session_closed_on_task_success():
     """Sessions are closed promptly when tasks succeed (not deferred to __aexit__)."""
     _db = _make_middleware_and_db()
 
-    async with _db(multi_sessions=True) as ctx:
+    async with _db(multi_sessions=True):
 
         async def work(n):
             result = await _db.session.execute(text(f"SELECT {n}"))
