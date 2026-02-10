@@ -242,7 +242,8 @@ async def test_cleanup_callback_with_mocked_closed_loop():
         return {"done": True}
 
     client = TestClient(app)
-    response = client.get("/test_mock_closed")
+    with pytest.warns(UserWarning, match="No running event loop during cleanup"):
+        response = client.get("/test_mock_closed")
     assert response.status_code == 200
 
 
@@ -281,5 +282,6 @@ async def test_cleanup_callback_with_runtime_error():
         return {"done": True}
 
     client = TestClient(app)
-    response = client.get("/test_runtime_error")
+    with pytest.warns(UserWarning, match="No running event loop during cleanup"):
+        response = client.get("/test_runtime_error")
     assert response.status_code == 200

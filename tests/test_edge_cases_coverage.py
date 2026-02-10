@@ -4,7 +4,6 @@ Targets specific uncovered lines in middleware.py
 """
 
 import asyncio
-import warnings
 
 import pytest
 from fastapi import FastAPI
@@ -40,94 +39,88 @@ async def test_multi_session_with_exception_rollback():
 
 
 @pytest.mark.asyncio
-async def test_multi_session_commit_failure_with_warning():
-    """Test multi-session cleanup with commit failure and warning (lines 170-177)"""
+async def test_multi_session_commit_failure_raises():
+    """Commit failure in multi-session cleanup must fail the request."""
     app = FastAPI()
     app.add_middleware(SQLAlchemyMiddleware, db_url="sqlite+aiosqlite:///:memory:")
 
     @app.get("/test_commit_failure_warning")
     async def test_commit_failure_warning():
-        with warnings.catch_warnings(record=True):
-            warnings.simplefilter("always")
+        async with db(multi_sessions=True, commit_on_exit=True):
+            session = db.session
 
-            async with db(multi_sessions=True, commit_on_exit=True):
-                session = db.session
+            # Mock commit to raise exception
+            async def failing_commit():
+                raise SQLAlchemyError("Commit failed")
 
-                # Mock commit to raise exception
-                async def failing_commit():
-                    raise SQLAlchemyError("Commit failed")
+            session.commit = failing_commit
 
-                session.commit = failing_commit
-
-                await session.execute(text("SELECT 1"))
+            await session.execute(text("SELECT 1"))
 
         return {"status": "handled"}
 
-    client = TestClient(app)
+    client = TestClient(app, raise_server_exceptions=False)
     response = client.get("/test_commit_failure_warning")
-    assert response.status_code == 200
+    assert response.status_code == 500
 
 
 @pytest.mark.asyncio
-async def test_multi_session_rollback_failure_with_warning():
-    """Test multi-session cleanup with rollback failure (lines 178-184)"""
+async def test_multi_session_rollback_failure_raises():
+    """Rollback failure in multi-session cleanup must fail the request."""
     app = FastAPI()
     app.add_middleware(SQLAlchemyMiddleware, db_url="sqlite+aiosqlite:///:memory:")
 
     @app.get("/test_rollback_failure")
     async def test_rollback_failure():
-        with warnings.catch_warnings(record=True):
-            warnings.simplefilter("always")
+        async with db(multi_sessions=True, commit_on_exit=True):
+            session = db.session
 
-            async with db(multi_sessions=True, commit_on_exit=True):
-                session = db.session
+            # Mock both commit and rollback to fail
+            async def failing_commit():
+                raise SQLAlchemyError("Commit failed")
 
-                # Mock both commit and rollback to fail
-                async def failing_commit():
-                    raise SQLAlchemyError("Commit failed")
+            async def failing_rollback():
+                raise SQLAlchemyError("Rollback failed")
 
-                async def failing_rollback():
-                    raise SQLAlchemyError("Rollback failed")
+            session.commit = failing_commit
+            session.rollback = failing_rollback
 
-                session.commit = failing_commit
-                session.rollback = failing_rollback
-
-                await session.execute(text("SELECT 1"))
+            await session.execute(text("SELECT 1"))
 
         return {"status": "handled"}
 
-    client = TestClient(app)
+    client = TestClient(app, raise_server_exceptions=False)
     response = client.get("/test_rollback_failure")
-    assert response.status_code == 200
+    assert response.status_code == 500
 
 
 @pytest.mark.asyncio
-async def test_multi_session_close_failure_with_warning():
-    """Test multi-session cleanup with close failure (lines 188-194)"""
+async def test_multi_session_close_failure_raises():
+    """Close failure in multi-session cleanup must fail the request."""
     app = FastAPI()
     app.add_middleware(SQLAlchemyMiddleware, db_url="sqlite+aiosqlite:///:memory:")
 
     @app.get("/test_close_failure")
     async def test_close_failure():
-        with warnings.catch_warnings(record=True):
-            warnings.simplefilter("always")
+        async with db(multi_sessions=True):
+            session = db.session
 
-            async with db(multi_sessions=True):
-                session = db.session
+            # Mock close to fail
+            original_close = session.close
 
-                # Mock close to fail
-                async def failing_close():
-                    raise Exception("Close failed")
+            async def failing_close():
+                await original_close()
+                raise Exception("Close failed")
 
-                session.close = failing_close
+            session.close = failing_close
 
-                await session.execute(text("SELECT 1"))
+            await session.execute(text("SELECT 1"))
 
         return {"status": "handled"}
 
-    client = TestClient(app)
+    client = TestClient(app, raise_server_exceptions=False)
     response = client.get("/test_close_failure")
-    assert response.status_code == 200
+    assert response.status_code == 500
 
 
 @pytest.mark.asyncio

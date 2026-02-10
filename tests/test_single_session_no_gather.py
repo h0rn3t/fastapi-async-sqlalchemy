@@ -59,6 +59,7 @@ async def test_multi_sessions_gather_with_tasks(app, db, SQLAlchemyMiddleware):
     app.add_middleware(SQLAlchemyMiddleware, db_url=db_url)
 
     async with db(multi_sessions=True):
+
         async def query(n):
             res = await db.session.execute(text(f"SELECT {n}"))
             return res

@@ -136,7 +136,7 @@ async def create_tables():
 
 
 @app.post("/users", response_model=dict)
-async def create_user(username: str, email: str, full_name: str = None):
+async def create_user(username: str, email: str, full_name: str | None = None):
     """
     Create a new user.
 
@@ -186,7 +186,12 @@ async def get_user(user_id: int):
 
 
 @app.put("/users/{user_id}")
-async def update_user(user_id: int, username: str = None, email: str = None, full_name: str = None):
+async def update_user(
+    user_id: int,
+    username: str | None = None,
+    email: str | None = None,
+    full_name: str | None = None,
+):
     """
     Update user information.
 
