@@ -61,13 +61,15 @@ async def test_multi_sessions_gather_with_tasks(app, db, SQLAlchemyMiddleware):
     async with db(multi_sessions=True):
 
         async def query(n):
-            return await db.session.execute(text(f"SELECT {n}"))
+            res = await db.session.execute(text(f"SELECT {n}"))
+            return res
 
         tasks = [
             asyncio.create_task(query(1)),
             asyncio.create_task(query(2)),
         ]
         results = await asyncio.gather(*tasks)
+
         assert results[0].scalar() == 1
         assert results[1].scalar() == 2
 

@@ -19,7 +19,7 @@ from fastapi_async_sqlalchemy.middleware import create_middleware_and_session_pr
 
 @pytest.mark.asyncio
 async def test_multi_session_cleanup_with_commit_exception():
-    """Test that rollback is called when commit fails in multi-session cleanup (lines 114-116)"""
+    """Commit failure in multi-session cleanup must fail the request."""
     app = FastAPI()
     app.add_middleware(SQLAlchemyMiddleware, db_url="sqlite+aiosqlite://")
 
@@ -48,15 +48,9 @@ async def test_multi_session_cleanup_with_commit_exception():
 
             return {"session_id": id(session)}
 
-    client = TestClient(app)
-
-    # The request should complete, but the cleanup task will fail
-    # We need to let the cleanup task run
+    client = TestClient(app, raise_server_exceptions=False)
     response = client.get("/test_commit_failure")
-    assert response.status_code == 200
-
-    # Give cleanup tasks time to run
-    await asyncio.sleep(0.1)
+    assert response.status_code == 500
 
 
 @pytest.mark.asyncio
@@ -213,13 +207,12 @@ async def test_multi_session_mode_context_vars():
     @app.get("/test_context_vars")
     async def test_context_vars():
         async with db(multi_sessions=True, commit_on_exit=True):
-            # Each db.session access creates a new session in multi_sessions mode
             session1 = db.session
             session2 = db.session
 
-            # Different sessions are created for each access
             assert session1 is not None
             assert session2 is not None
+            assert session1 is session2
 
             return {"status": "ok"}
 
