@@ -116,7 +116,9 @@ async def test_connection_ctx_releases_on_error():
 
         # Run a failing task, then a succeeding one; both should get slots
         results = await asyncio.gather(
-            bad_work(), good_work(), return_exceptions=True,
+            bad_work(),
+            good_work(),
+            return_exceptions=True,
         )
         assert isinstance(results[0], RuntimeError)
         assert results[1] == 42
@@ -409,7 +411,6 @@ async def test_connection_and_session_interop():
     _db = _make_middleware_and_db()
 
     async with _db(multi_sessions=True, max_concurrent=3):
-
         # Parent uses db.session directly
         parent_result = await _db.session.execute(text("SELECT 0"))
         assert parent_result.scalar() == 0
