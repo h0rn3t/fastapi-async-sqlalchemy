@@ -5,7 +5,6 @@ import asyncio
 import sys
 
 import pytest
-from sqlalchemy import text
 
 db_url = "sqlite+aiosqlite://"
 
