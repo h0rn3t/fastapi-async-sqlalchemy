@@ -41,13 +41,13 @@ def create_middleware_and_session_proxy() -> tuple:
     @dataclass
     class _MultiSessionState:
         tracked: set[AsyncSession] = field(default_factory=set)
-        task_sessions: dict[int, AsyncSession] = field(default_factory=dict)
+        task_sessions: dict[asyncio.Task, AsyncSession] = field(default_factory=dict)
         cleanup_tasks: list[asyncio.Task] = field(default_factory=list)
-        parent_task_id: int | None = None
+        parent_task: asyncio.Task | None = None
         commit_on_exit: bool = False
         session_args: dict = field(default_factory=dict)
         semaphore: asyncio.Semaphore | None = None
-        slot_holders: set[int] = field(default_factory=set)
+        slot_holders: set[asyncio.Task] = field(default_factory=set)
 
     def _cleanup_error(error: BaseException) -> str:
         return f"{type(error).__name__}: {error}"
@@ -123,11 +123,10 @@ def create_middleware_and_session_proxy() -> tuple:
             multi_sessions = _multi_sessions_ctx.get()
             if multi_sessions and self._state is not None:
                 task = asyncio.current_task()
-                task_id = id(task) if task is not None else None
 
                 # Reuse existing session for this task
-                if task_id is not None and task_id in self._state.task_sessions:
-                    self._session = self._state.task_sessions[task_id]
+                if task is not None and task in self._state.task_sessions:
+                    self._session = self._state.task_sessions[task]
                     self._owns_session = False
                     return self._session
 
@@ -135,8 +134,8 @@ def create_middleware_and_session_proxy() -> tuple:
                 if self._semaphore:
                     await self._semaphore.acquire()
                     self._acquired_slot = True
-                    if task_id is not None:
-                        self._state.slot_holders.add(task_id)
+                    if task is not None:
+                        self._state.slot_holders.add(task)
 
                 # Create new session — we own it and will close it in __aexit__
                 try:
@@ -145,12 +144,12 @@ def create_middleware_and_session_proxy() -> tuple:
                     if self._acquired_slot and self._semaphore:
                         self._semaphore.release()
                         self._acquired_slot = False
-                    if task_id is not None:
-                        self._state.slot_holders.discard(task_id)
+                    if task is not None:
+                        self._state.slot_holders.discard(task)
                     raise
                 self._state.tracked.add(session)
-                if task_id is not None:
-                    self._state.task_sessions[task_id] = session
+                if task is not None:
+                    self._state.task_sessions[task] = session
                 self._session = session
                 self._owns_session = True
                 return session
@@ -165,12 +164,11 @@ def create_middleware_and_session_proxy() -> tuple:
 
         async def __aexit__(self, exc_type, exc_val, exc_tb):
             task = asyncio.current_task()
-            task_id = id(task) if task else None
             try:
                 if self._owns_session and self._session is not None and self._state is not None:
                     # Remove from state to prevent double-cleanup by done_callback
-                    if task_id is not None:
-                        self._state.task_sessions.pop(task_id, None)
+                    if task is not None:
+                        self._state.task_sessions.pop(task, None)
                     self._state.tracked.discard(self._session)
 
                     await _finalize_session(
@@ -179,8 +177,8 @@ def create_middleware_and_session_proxy() -> tuple:
                         exc=exc_val if exc_type is not None else None,
                     )
             finally:
-                if task_id is not None and self._state is not None:
-                    self._state.slot_holders.discard(task_id)
+                if task is not None and self._state is not None:
+                    self._state.slot_holders.discard(task)
                 if self._acquired_slot and self._semaphore:
                     self._semaphore.release()
 
@@ -234,16 +232,15 @@ def create_middleware_and_session_proxy() -> tuple:
                     raise RuntimeError("Multi-session state is not initialized")
 
                 task = asyncio.current_task()
-                task_id = id(task) if task is not None else None
 
-                if task_id is not None and task_id in state.task_sessions:
-                    return state.task_sessions[task_id]
+                if task is not None and task in state.task_sessions:
+                    return state.task_sessions[task]
 
                 if (
                     state.semaphore is not None
-                    and task_id is not None
-                    and task_id != state.parent_task_id
-                    and task_id not in state.slot_holders
+                    and task is not None
+                    and task is not state.parent_task
+                    and task not in state.slot_holders
                 ):
                     raise RuntimeError(
                         "When `max_concurrent` is set, child tasks must access DB via "
@@ -253,8 +250,8 @@ def create_middleware_and_session_proxy() -> tuple:
 
                 session = _Session(**state.session_args)
                 state.tracked.add(session)
-                if task_id is not None:
-                    state.task_sessions[task_id] = session
+                if task is not None:
+                    state.task_sessions[task] = session
 
                 # Capture loop from current context
                 try:
@@ -283,9 +280,9 @@ def create_middleware_and_session_proxy() -> tuple:
                                         exc=None,
                                     )
                             finally:
-                                if task_id is not None:
-                                    state.task_sessions.pop(task_id, None)
-                                    state.slot_holders.discard(task_id)
+                                if task is not None:
+                                    state.task_sessions.pop(task, None)
+                                    state.slot_holders.discard(task)
                             return
 
                         try:
@@ -298,21 +295,17 @@ def create_middleware_and_session_proxy() -> tuple:
                                 exc=task_exception,
                             )
                         finally:
-                            if task_id is not None:
-                                state.task_sessions.pop(task_id, None)
-                                state.slot_holders.discard(task_id)
+                            if task is not None:
+                                state.task_sessions.pop(task, None)
+                                state.slot_holders.discard(task)
 
                     if current_loop and not current_loop.is_closed():
-
-                        def schedule_cleanup() -> None:
-                            cleanup_task = current_loop.create_task(cleanup())
-                            state.cleanup_tasks.append(cleanup_task)
-
-                        current_loop.call_soon(schedule_cleanup)
+                        cleanup_task = current_loop.create_task(cleanup())
+                        state.cleanup_tasks.append(cleanup_task)
                     else:
                         warnings.warn("No running event loop during cleanup", stacklevel=2)
 
-                if task is not None and task_id != state.parent_task_id:
+                if task is not None and task is not state.parent_task:
                     task.add_done_callback(cleanup_callback)
                 return session
             else:
@@ -321,7 +314,7 @@ def create_middleware_and_session_proxy() -> tuple:
                     raise MissingSessionError
                 return session
 
-        def connection(cls) -> _ConnectionContextManager:
+        def connection(self) -> _ConnectionContextManager:
             """Return an async context manager that respects pool throttling.
 
             When ``max_concurrent`` is set on the enclosing ``db(...)`` context,
@@ -343,7 +336,7 @@ def create_middleware_and_session_proxy() -> tuple:
             """
             return _ConnectionContextManager()
 
-        async def gather(cls, *coros_or_futures, return_exceptions: bool = False):
+        async def gather(self, *coros_or_futures, return_exceptions: bool = False):
             """Drop-in replacement for ``asyncio.gather`` with pool throttling.
 
             Each coroutine is wrapped so that it acquires a semaphore slot
@@ -412,7 +405,7 @@ def create_middleware_and_session_proxy() -> tuple:
                 )
                 self.multi_state_token = _multi_state.set(
                     _MultiSessionState(
-                        parent_task_id=id(parent_task) if parent_task else None,
+                        parent_task=parent_task,
                         commit_on_exit=self.commit_on_exit,
                         session_args=self.session_args,
                         semaphore=semaphore,
@@ -466,16 +459,12 @@ def create_middleware_and_session_proxy() -> tuple:
             else:
                 session = _session.get()
                 try:
-                    if exc_type is not None:
-                        await session.rollback()
-                    elif self.commit_on_exit:
-                        try:
-                            await session.commit()
-                        except Exception:
-                            await session.rollback()
-                            raise
+                    await _finalize_session(
+                        session,
+                        commit_on_exit=self.commit_on_exit,
+                        exc=exc_value if exc_type is not None else None,
+                    )
                 finally:
-                    await session.close()
                     _session.reset(self.token)
 
     return _SQLAlchemyMiddleware, DBSession
