@@ -303,12 +303,8 @@ def create_middleware_and_session_proxy() -> tuple:
                                 state.slot_holders.discard(task_id)
 
                     if current_loop and not current_loop.is_closed():
-
-                        def schedule_cleanup() -> None:
-                            cleanup_task = current_loop.create_task(cleanup())
-                            state.cleanup_tasks.append(cleanup_task)
-
-                        current_loop.call_soon(schedule_cleanup)
+                        cleanup_task = current_loop.create_task(cleanup())
+                        state.cleanup_tasks.append(cleanup_task)
                     else:
                         warnings.warn("No running event loop during cleanup", stacklevel=2)
 
