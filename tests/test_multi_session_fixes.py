@@ -75,3 +75,42 @@ async def test_cleanup_tasks_populated_before_aexit_gathers():
             f"Expected 3 cleanup tasks after gather returns (got {len(state.cleanup_tasks)}). "
             "Still using call_soon which defers task creation to a future event loop tick."
         )
+
+
+# ---------------------------------------------------------------------------
+# Fix 2: id(task) key reuse — task_sessions must use Task objects as keys
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_task_sessions_keys_are_task_objects_not_ints():
+    """
+    Regression: task_sessions and slot_holders must use Task objects as keys, not int IDs.
+
+    id(task) returns the memory address and can be reused after the task is GC'd,
+    causing a new task's session to be erroneously removed by an old cleanup callback.
+    Using Task objects as keys avoids this entirely — two distinct Task objects
+    are never `is`-equal even if they share an address at different points in time.
+    """
+    _db = _make_middleware_and_db()
+    multi_state_var = _get_ctx_var(_db, "_multi_state")
+
+    captured_keys = []
+
+    async with _db(multi_sessions=True):
+
+        async def work():
+            _ = _db.session  # creates session, stored in task_sessions
+            state = multi_state_var.get()
+            assert state is not None
+            # Capture keys before task finishes
+            captured_keys.extend(state.task_sessions.keys())
+
+        await asyncio.create_task(work())
+
+    # All keys must be Task objects, not int IDs
+    for key in captured_keys:
+        assert isinstance(key, asyncio.Task), (
+            f"task_sessions key is {type(key).__name__!r} (value={key!r}), expected asyncio.Task. "
+            "Using id(task) as key risks memory address reuse bugs."
+        )
