@@ -314,7 +314,7 @@ def create_middleware_and_session_proxy() -> tuple:
                     raise MissingSessionError
                 return session
 
-        def connection(cls) -> _ConnectionContextManager:
+        def connection(self) -> _ConnectionContextManager:
             """Return an async context manager that respects pool throttling.
 
             When ``max_concurrent`` is set on the enclosing ``db(...)`` context,
@@ -336,7 +336,7 @@ def create_middleware_and_session_proxy() -> tuple:
             """
             return _ConnectionContextManager()
 
-        async def gather(cls, *coros_or_futures, return_exceptions: bool = False):
+        async def gather(self, *coros_or_futures, return_exceptions: bool = False):
             """Drop-in replacement for ``asyncio.gather`` with pool throttling.
 
             Each coroutine is wrapped so that it acquires a semaphore slot
