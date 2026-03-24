@@ -459,16 +459,12 @@ def create_middleware_and_session_proxy() -> tuple:
             else:
                 session = _session.get()
                 try:
-                    if exc_type is not None:
-                        await session.rollback()
-                    elif self.commit_on_exit:
-                        try:
-                            await session.commit()
-                        except Exception:
-                            await session.rollback()
-                            raise
+                    await _finalize_session(
+                        session,
+                        commit_on_exit=self.commit_on_exit,
+                        exc=exc_value if exc_type is not None else None,
+                    )
                 finally:
-                    await session.close()
                     _session.reset(self.token)
 
     return _SQLAlchemyMiddleware, DBSession

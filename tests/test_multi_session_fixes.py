@@ -114,3 +114,40 @@ async def test_task_sessions_keys_are_task_objects_not_ints():
             f"task_sessions key is {type(key).__name__!r} (value={key!r}), expected asyncio.Task. "
             "Using id(task) as key risks memory address reuse bugs."
         )
+
+
+# ---------------------------------------------------------------------------
+# Fix 3: non-multi __aexit__ uses _finalize_session (aggregates multiple errors)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_single_session_aexit_aggregates_rollback_and_close_errors():
+    """
+    Regression: non-multi __aexit__ must use _finalize_session which aggregates
+    errors from both rollback() and close() when both fail.
+
+    Before fix (manual path):
+      - rollback() raises → propagates to finally block
+      - close() raises in finally → close error REPLACES rollback error
+      - caller sees only RuntimeError("close error"), rollback error is lost
+
+    After fix (_finalize_session):
+      - both errors collected and raised as:
+        RuntimeError("Session cleanup failed with 2 errors: ...")
+    """
+    _db = _make_middleware_and_db()
+
+    with pytest.raises(RuntimeError, match="Session cleanup failed with 2 errors"):
+        async with _db():
+            session = _db.session
+
+            async def failing_rollback():
+                raise RuntimeError("rollback error")
+
+            async def failing_close():
+                raise RuntimeError("close error")
+
+            session.rollback = failing_rollback
+            session.close = failing_close
+            raise ValueError("trigger rollback path in __aexit__")
