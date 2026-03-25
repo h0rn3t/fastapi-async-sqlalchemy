@@ -19,4 +19,4 @@ __all__ = [
     "DBSessionType",
 ]
 
-__version__ = "0.7.2alpha"
+__version__ = "0.7.2a1"

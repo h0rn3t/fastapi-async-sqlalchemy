@@ -13,11 +13,17 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        build: [linux_3.12, windows_3.12, mac_3.12]
+        build: [linux_3.12, windows_3.12, mac_3.12, linux_3.13, linux_3.14]
         include:
         - build: linux_3.12
           os: ubuntu-latest
           python: 3.12
+        - build: linux_3.13
+          os: ubuntu-latest
+          python: 3.13
+        - build: linux_3.14
+          os: ubuntu-latest
+          python: 3.14
         - build: windows_3.12
           os: windows-latest
           python: 3.12
