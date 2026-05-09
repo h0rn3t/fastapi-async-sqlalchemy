@@ -625,3 +625,100 @@ async def test_max_concurrent_must_be_positive():
     with pytest.raises(ValueError, match="`max_concurrent` must be greater than 0"):
         async with _db(multi_sessions=True, max_concurrent=0):
             pass
+
+
+@pytest.mark.asyncio
+async def test_gather_rejects_pre_created_task_when_throttled():
+    """db.gather() rejects pre-created Tasks when max_concurrent is set."""
+    _db = _make_middleware_and_db()
+
+    async def work():
+        return 1
+
+    coro = work()
+
+    async with _db(multi_sessions=True, max_concurrent=1):
+        task = asyncio.create_task(work())
+        try:
+            with pytest.raises(TypeError, match="coroutine objects only"):
+                await _db.gather(task, coro)
+        finally:
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+
+    # Coroutine passed alongside the bad input must have been closed —
+    # awaiting a closed coroutine raises RuntimeError.
+    with pytest.raises(RuntimeError, match="cannot reuse already awaited coroutine"):
+        await coro
+
+
+@pytest.mark.asyncio
+async def test_gather_rejects_non_coroutine_when_throttled():
+    """db.gather() rejects plain non-coroutine values when max_concurrent is set."""
+    _db = _make_middleware_and_db()
+
+    async def work():
+        return 1
+
+    coro = work()
+
+    async with _db(multi_sessions=True, max_concurrent=1):
+        with pytest.raises(TypeError, match="coroutine objects only"):
+            await _db.gather(coro, "not a coroutine")
+
+    with pytest.raises(RuntimeError, match="cannot reuse already awaited coroutine"):
+        await coro
+
+
+@pytest.mark.asyncio
+async def test_middleware_buffers_unknown_response_message_types():
+    """ASGI messages other than http.response.start/body must be buffered
+    alongside the response (e.g. http.response.trailers extension)."""
+    from fastapi_async_sqlalchemy import create_middleware_and_session_proxy
+
+    Middleware, _db = create_middleware_and_session_proxy()
+
+    async def downstream_app(scope, receive, send):
+        await send({"type": "http.response.start", "status": 200, "headers": []})
+        await send({"type": "http.response.trailers", "trailers": []})
+        await send({"type": "http.response.body", "body": b"ok"})
+
+    middleware = Middleware(app=downstream_app, db_url=db_url)
+
+    sent = []
+
+    async def receive():
+        return {"type": "http.request"}
+
+    async def send(message):
+        sent.append(message["type"])
+
+    await middleware(
+        {"type": "http", "method": "GET", "path": "/"}, receive, send
+    )
+
+    assert "http.response.trailers" in sent
+
+
+@pytest.mark.asyncio
+async def test_middleware_passes_through_non_http_lifespan_scope():
+    """Scopes other than http/lifespan (e.g. websocket) must bypass session setup."""
+    from fastapi_async_sqlalchemy import create_middleware_and_session_proxy
+
+    Middleware, _db = create_middleware_and_session_proxy()
+
+    seen = {}
+
+    async def downstream_app(scope, receive, send):
+        seen["scope"] = scope
+
+    middleware = Middleware(app=downstream_app, db_url=db_url)
+
+    async def receive():
+        return {"type": "websocket.connect"}
+
+    async def send(_message):
+        pass
+
+    await middleware({"type": "websocket"}, receive, send)
+    assert seen["scope"]["type"] == "websocket"
