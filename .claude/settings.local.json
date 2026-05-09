@@ -1,7 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Bash(grep -rn -E \"python.{0,3}3\\\\.\\(9|10|11\\)|py3\\(9|10|11\\)|>=3\\\\.9|>=3\\\\.10|>=3\\\\.11\" --include=\"*.md\" --include=\"*.yml\" --include=\"*.yaml\" --include=\"*.toml\" --include=\"*.cfg\" --include=\"*.ini\" --include=\"*.txt\" --include=\"*.py\")"
-    ]
-  }
-}

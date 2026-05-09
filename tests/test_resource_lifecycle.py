@@ -26,6 +26,7 @@ def _get_ctx_var(_db, var_name: str):
         for name, cell in zip(
             session_prop.fget.__code__.co_freevars,
             session_prop.fget.__closure__,
+            strict=True,
         )
     }
     return closure[var_name]
@@ -561,6 +562,7 @@ async def test_dispose_failure_clears_bindings_and_allows_retry(monkeypatch):
         zip(
             middleware.dispose.__func__.__code__.co_freevars,
             middleware.dispose.__func__.__closure__,
+            strict=True,
         )
     )
     assert closure["_Session_engine"].cell_contents is engine
