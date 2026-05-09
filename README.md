@@ -46,6 +46,9 @@ app.add_middleware(
         "max_overflow": 10,    # number of connections to allow to be opened above pool_size
     },
 )
+# Engines created from ``db_url`` are owned by the middleware and are disposed
+# during the application shutdown lifespan. Tests that need shutdown behavior
+# should run the app lifespan, for example with ``with TestClient(app)``.
 # once the middleware is applied, any route can then access the database session
 # from the global ``db``
 
@@ -82,6 +85,97 @@ if __name__ == "__main__":
 
 ```
 
+#### Engine ownership
+
+When the middleware receives ``db_url``, it creates and owns the async engine.
+The engine is kept for the application lifetime and disposed when the ASGI
+lifespan shutdown completes. It is not disposed per request. Disposal also
+runs when the lifespan ends with a failure (``lifespan.shutdown.failed`` or
+``lifespan.startup.failed``), so a raising user shutdown handler does not leak
+the connection pool.
+
+Engine disposal happens before the lifespan acknowledgement is forwarded to
+the ASGI server, so a stuck pool drain will block the server's graceful
+shutdown ack. Configure your ASGI server's graceful shutdown timeout (for
+example uvicorn's ``--timeout-graceful-shutdown``) so it accommodates the
+worst-case time required to close active connections.
+
+When the middleware receives ``custom_engine``, the caller owns that engine. The
+middleware will use it but will not dispose it during application shutdown:
+
+```python
+from sqlalchemy.ext.asyncio import create_async_engine
+
+engine = create_async_engine("postgresql+asyncpg://user:pass@host/db")
+app.add_middleware(SQLAlchemyMiddleware, custom_engine=engine)
+
+# Later, in caller-managed shutdown code or test cleanup:
+await engine.dispose()
+```
+
+#### Manual disposal outside ASGI lifespan
+
+When ``SQLAlchemyMiddleware(db_url=...)`` is constructed outside an ASGI
+application lifespan — for example in a script, an ad-hoc test harness, or
+when embedding the middleware in a non-ASGI runtime — there is no
+``lifespan.shutdown`` event to trigger engine disposal. In that case call
+``await middleware.dispose()`` explicitly so the middleware-owned engine is
+released:
+
+```python
+middleware = SQLAlchemyMiddleware(app, db_url="postgresql+asyncpg://...")
+try:
+    ...  # use db.session
+finally:
+    await middleware.dispose()
+```
+
+``dispose()`` is idempotent on success and is safe to retry if it raises:
+the proxy session bindings are cleared deterministically so a subsequent
+call actually re-attempts the underlying ``engine.dispose()``. The same
+guidance applies to each pair created by
+``create_middleware_and_session_proxy()``.
+
+#### Request transactions and streaming responses
+
+When ``SQLAlchemyMiddleware(..., commit_on_exit=True)`` manages a normal
+non-streaming HTTP request, the request session is committed before
+``http.response.start`` is forwarded to the ASGI server. If commit, rollback,
+or close fails, the failure happens before a successful response is reported to
+the client.
+
+Streaming response body generation has a different lifetime from a normal
+request transaction. Do not rely on the middleware-managed request session to
+stay open while a ``StreamingResponse``/``FileResponse`` yields chunks. Open an
+explicit session inside the generator so the body owns the database lifetime:
+
+```python
+from fastapi.responses import StreamingResponse
+
+@app.get("/export")
+async def export():
+    async def rows():
+        async with db():
+            result = await db.session.stream(foo.select())
+            async for row in result:
+                yield f"{row.id}\n".encode()
+    return StreamingResponse(rows(), media_type="text/plain")
+```
+
+Implicit ``commit_on_exit=True`` is not a safe way to report streaming write
+success: the response may have already started before an unbounded body is
+finished. If a streaming route needs database writes, either complete and
+commit the write in a separate explicit ``async with db(commit_on_exit=True)``
+block before creating the streaming response, or make the streaming generator
+use an explicit ``async with db(commit_on_exit=True)`` block and design the API
+so clients do not treat early chunks as write success.
+
+For applications that previously used ``db.session`` directly inside streaming
+generators, move that code into an explicit generator-owned context as shown
+above. This keeps database access available for the whole body while making it
+clear that the session lifetime belongs to the stream, not the original request
+transaction.
+
 #### Usage of multiple databases
 
 databases.py
@@ -93,6 +187,10 @@ from fastapi_async_sqlalchemy import create_middleware_and_session_proxy
 FirstSQLAlchemyMiddleware, first_db = create_middleware_and_session_proxy()
 SecondSQLAlchemyMiddleware, second_db = create_middleware_and_session_proxy()
 ```
+
+Use a separate middleware/session proxy pair for each independent app or
+database. Reusing the same proxy with a different live engine is rejected so
+requests cannot silently switch to another database binding.
 
 main.py
 
@@ -152,9 +250,10 @@ async def get_files_from_second_db():
 
 @router.get("/concurrent-queries")
 async def parallel_select():
-    async with first_db(multi_sessions=True):
+    async with first_db(multi_sessions=True, max_concurrent=10):
         async def execute_query(query):
-            return await first_db.session.execute(text(query))
+            async with first_db.connection() as session:
+                return await session.execute(text(query))
 
         tasks = [
             asyncio.create_task(execute_query("SELECT 1")),
@@ -167,3 +266,10 @@ async def parallel_select():
 
         await asyncio.gather(*tasks)
 ```
+
+Child tasks that use database sessions must finish before the owning
+``async with db(multi_sessions=True)`` block exits. When ``max_concurrent`` is
+set, child tasks should use ``db.connection()`` or pass coroutine objects to
+``db.gather()`` so the middleware can own both the session lifetime and the
+semaphore slot. Already-created ``Task`` or ``Future`` objects are rejected by
+throttled ``db.gather()`` because they may have started outside the semaphore.

@@ -32,6 +32,7 @@ def _get_ctx_var(_db, var_name: str):
         for name, cell in zip(
             session_prop.fget.__code__.co_freevars,
             session_prop.fget.__closure__,
+            strict=False,
         )
     }
     return closure[var_name]
@@ -121,25 +122,28 @@ async def test_task_sessions_keys_are_task_objects_not_ints():
 
 
 @pytest.mark.asyncio
-async def test_single_session_aexit_aggregates_rollback_and_close_errors():
+async def test_single_session_aexit_raises_aggregated_cleanup_errors_without_original_exception():
     """
     Regression: non-multi __aexit__ must use _finalize_session which aggregates
-    errors from both rollback() and close() when both fail.
+    cleanup errors when there is no original exception already propagating.
 
     Before fix (manual path):
-      - rollback() raises → propagates to finally block
-      - close() raises in finally → close error REPLACES rollback error
-      - caller sees only RuntimeError("close error"), rollback error is lost
+      - commit() raises -> propagates to finally block
+      - close() raises in finally -> close error REPLACES commit error
+      - caller sees only RuntimeError("close error"), commit error is lost
 
     After fix (_finalize_session):
-      - both errors collected and raised as:
-        RuntimeError("Session cleanup failed with 2 errors: ...")
+      - commit, rollback, and close errors are collected and raised as:
+        RuntimeError("Session cleanup failed with 3 errors: ...")
     """
     _db = _make_middleware_and_db()
 
-    with pytest.raises(RuntimeError, match="Session cleanup failed with 2 errors"):
-        async with _db():
+    with pytest.raises(RuntimeError, match="Session cleanup failed with 3 errors"):
+        async with _db(commit_on_exit=True):
             session = _db.session
+
+            async def failing_commit():
+                raise RuntimeError("commit error")
 
             async def failing_rollback():
                 raise RuntimeError("rollback error")
@@ -147,6 +151,30 @@ async def test_single_session_aexit_aggregates_rollback_and_close_errors():
             async def failing_close():
                 raise RuntimeError("close error")
 
+            session.commit = failing_commit
             session.rollback = failing_rollback
             session.close = failing_close
-            raise ValueError("trigger rollback path in __aexit__")
+
+
+@pytest.mark.asyncio
+async def test_single_session_aexit_warns_cleanup_errors_without_replacing_original():
+    """
+    When the block body is already raising, cleanup errors must be visible as a
+    warning without replacing the original exception.
+    """
+    _db = _make_middleware_and_db()
+
+    with pytest.warns(UserWarning, match="Session cleanup failed with 2 errors"):
+        with pytest.raises(ValueError, match="trigger rollback path"):
+            async with _db():
+                session = _db.session
+
+                async def failing_rollback():
+                    raise RuntimeError("rollback error")
+
+                async def failing_close():
+                    raise RuntimeError("close error")
+
+                session.rollback = failing_rollback
+                session.close = failing_close
+                raise ValueError("trigger rollback path in __aexit__")

@@ -45,7 +45,7 @@ async def test_concurrent_queries_same_session_may_fail(app, db, SQLAlchemyMiddl
     Note: SQLite (aiosqlite) may not reproduce this issue because it serializes
     operations internally. The issue is more common with asyncpg/asyncmy drivers.
     """
-    app.add_middleware(SQLAlchemyMiddleware, db_url=db_url)
+    SQLAlchemyMiddleware(app, db_url=db_url)
 
     async with db():
         # Create a test table
@@ -100,7 +100,7 @@ async def test_concurrent_queries_same_session_sequential_works(app, db, SQLAlch
 
     This is a workaround - execute queries sequentially instead of using asyncio.gather().
     """
-    app.add_middleware(SQLAlchemyMiddleware, db_url=db_url)
+    SQLAlchemyMiddleware(app, db_url=db_url)
 
     async with db():
         # Create a test table
@@ -139,7 +139,7 @@ async def test_concurrent_queries_multi_sessions_works(app, db, SQLAlchemyMiddle
     With multi_sessions=True, each task gets its own session,
     so concurrent operations don't conflict.
     """
-    app.add_middleware(SQLAlchemyMiddleware, db_url=db_url)
+    SQLAlchemyMiddleware(app, db_url=db_url)
 
     async with db(multi_sessions=True, commit_on_exit=True):
         # Create a test table
@@ -189,7 +189,7 @@ async def test_concurrent_queries_reproduce_user_error(app, db, SQLAlchemyMiddle
     InvalidRequestError: This session is provisioning a new connection;
     concurrent operations are not permitted
     """
-    app.add_middleware(SQLAlchemyMiddleware, db_url=db_url)
+    SQLAlchemyMiddleware(app, db_url=db_url)
 
     async with db():
         # Setup similar to user's use case
@@ -250,7 +250,7 @@ async def test_solution_using_separate_db_contexts(app, db, SQLAlchemyMiddleware
     This is different from multi_sessions mode - here we're showing how to
     structure the code to avoid the concurrent operations issue.
     """
-    app.add_middleware(SQLAlchemyMiddleware, db_url=db_url)
+    SQLAlchemyMiddleware(app, db_url=db_url)
 
     # Setup data in the main context
     async with db(commit_on_exit=True):
@@ -296,7 +296,7 @@ async def test_antipattern_documentation(app, db, SQLAlchemyMiddleware):
     This test exists purely for documentation purposes to show
     what NOT to do and why.
     """
-    app.add_middleware(SQLAlchemyMiddleware, db_url=db_url)
+    SQLAlchemyMiddleware(app, db_url=db_url)
 
     async with db(commit_on_exit=True):
         await db.session.execute(
@@ -374,7 +374,7 @@ async def test_production_error_exact_reproduction(app, db, SQLAlchemyMiddleware
     )
     ```
     """
-    app.add_middleware(SQLAlchemyMiddleware, db_url=db_url)
+    SQLAlchemyMiddleware(app, db_url=db_url)
 
     async with db(commit_on_exit=True):
         # Setup similar to production

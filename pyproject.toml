@@ -1,6 +1,6 @@
 [tool.ruff]
 line-length = 100
-target-version = "py39"
+target-version = "py312"
 exclude = [
     ".git",
     ".venv",
@@ -35,5 +35,4 @@ split-on-trailing-comma = true
 [tool.pytest.ini_options]
 filterwarnings = [
     "ignore::DeprecationWarning",
-    "ignore:The garbage collector is trying to clean up:sqlalchemy.exc.SAWarning",
 ]

@@ -2,6 +2,7 @@
 Simple tests to boost coverage to target level
 """
 
+import asyncio
 from unittest.mock import AsyncMock
 
 import pytest
@@ -24,16 +25,12 @@ def test_session_not_initialised_error():
 
 def test_missing_session_error():
     """Test MissingSessionError when session context is None"""
-    from fastapi.testclient import TestClient
-
-    from fastapi_async_sqlalchemy import SQLAlchemyMiddleware, db
     from fastapi_async_sqlalchemy.exceptions import MissingSessionError
+    from fastapi_async_sqlalchemy.middleware import create_middleware_and_session_proxy
 
+    SQLAlchemyMiddleware, db = create_middleware_and_session_proxy()
     app = FastAPI()
-    app.add_middleware(SQLAlchemyMiddleware, db_url="sqlite+aiosqlite://")
-
-    # Initialize middleware by creating a client
-    TestClient(app)
+    SQLAlchemyMiddleware(app, db_url="sqlite+aiosqlite://")
 
     # Now _Session is initialized, but no active session context
     # This should raise MissingSessionError
@@ -44,16 +41,6 @@ def test_missing_session_error():
 @pytest.mark.asyncio
 async def test_rollback_on_commit_exception():
     """Test rollback is called when commit raises exception (lines 114-116)"""
-    from fastapi.testclient import TestClient
-
-    from fastapi_async_sqlalchemy import SQLAlchemyMiddleware
-
-    app = FastAPI()
-    app.add_middleware(SQLAlchemyMiddleware, db_url="sqlite+aiosqlite://")
-
-    # Initialize middleware
-    TestClient(app)
-
     # Create mock session that fails on commit
     mock_session = AsyncMock()
     mock_session.commit.side_effect = SQLAlchemyError("Commit failed!")
@@ -138,5 +125,8 @@ def test_skipped_tests_make_coverage():
     app = FastAPI()
 
     custom_engine = create_async_engine("sqlite+aiosqlite://")
-    middleware = SQLAlchemyMiddleware(app, custom_engine=custom_engine)
-    assert middleware.commit_on_exit is False  # Default value
+    try:
+        middleware = SQLAlchemyMiddleware(app, custom_engine=custom_engine)
+        assert middleware.commit_on_exit is False  # Default value
+    finally:
+        asyncio.run(custom_engine.dispose())

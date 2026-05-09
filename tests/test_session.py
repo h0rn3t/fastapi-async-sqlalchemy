@@ -1,10 +1,10 @@
 import asyncio
 
 import pytest
+from fastapi.testclient import TestClient
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
-from starlette.middleware.base import BaseHTTPMiddleware
 
 from fastapi_async_sqlalchemy.exceptions import (
     MissingSessionError,
@@ -15,9 +15,11 @@ db_url = "sqlite+aiosqlite://"
 
 
 @pytest.mark.asyncio
-async def test_init(app, SQLAlchemyMiddleware):
+async def test_init(app, db, SQLAlchemyMiddleware):
     mw = SQLAlchemyMiddleware(app, db_url=db_url)
-    assert isinstance(mw, BaseHTTPMiddleware)
+    # Pure ASGI middleware: must be callable with (scope, receive, send).
+    assert callable(mw)
+    assert mw.app is app
 
 
 @pytest.mark.asyncio
@@ -31,7 +33,10 @@ async def test_init_required_args(app, SQLAlchemyMiddleware):
 @pytest.mark.asyncio
 async def test_init_required_args_custom_engine(app, db, SQLAlchemyMiddleware):
     custom_engine = create_async_engine(db_url)
-    SQLAlchemyMiddleware(app, custom_engine=custom_engine)
+    try:
+        SQLAlchemyMiddleware(app, custom_engine=custom_engine)
+    finally:
+        await custom_engine.dispose()
 
 
 @pytest.mark.asyncio
@@ -60,14 +65,15 @@ async def test_init_incorrect_optional_args(app, SQLAlchemyMiddleware):
 
 
 @pytest.mark.asyncio
-async def test_inside_route(app, client, db, SQLAlchemyMiddleware):
+async def test_inside_route(app, db, SQLAlchemyMiddleware):
     app.add_middleware(SQLAlchemyMiddleware, db_url=db_url)
 
     @app.get("/")
     def test_get():
         assert isinstance(db.session, AsyncSession)
 
-    client.get("/")
+    with TestClient(app) as client:
+        client.get("/")
 
 
 @pytest.mark.asyncio
@@ -82,7 +88,7 @@ async def test_inside_route_without_middleware_fails(app, client, db):
 
 @pytest.mark.asyncio
 async def test_outside_of_route(app, db, SQLAlchemyMiddleware):
-    app.add_middleware(SQLAlchemyMiddleware, db_url=db_url)
+    SQLAlchemyMiddleware(app, db_url=db_url)
 
     async with db():
         assert isinstance(db.session, AsyncSession)
@@ -100,7 +106,7 @@ async def test_outside_of_route_without_middleware_fails(db):
 
 @pytest.mark.asyncio
 async def test_outside_of_route_without_context_fails(app, db, SQLAlchemyMiddleware):
-    app.add_middleware(SQLAlchemyMiddleware, db_url=db_url)
+    SQLAlchemyMiddleware(app, db_url=db_url)
 
     with pytest.raises(MissingSessionError):
         _ = db.session
@@ -108,7 +114,7 @@ async def test_outside_of_route_without_context_fails(app, db, SQLAlchemyMiddlew
 
 @pytest.mark.asyncio
 async def test_init_session(app, db, SQLAlchemyMiddleware):
-    app.add_middleware(SQLAlchemyMiddleware, db_url=db_url)
+    SQLAlchemyMiddleware(app, db_url=db_url)
 
     async with db():
         assert isinstance(db.session, AsyncSession)
@@ -116,7 +122,7 @@ async def test_init_session(app, db, SQLAlchemyMiddleware):
 
 @pytest.mark.asyncio
 async def test_db_session_commit_fail(app, db, SQLAlchemyMiddleware):
-    app.add_middleware(SQLAlchemyMiddleware, db_url=db_url, commit_on_exit=True)
+    SQLAlchemyMiddleware(app, db_url=db_url, commit_on_exit=True)
 
     with pytest.raises(IntegrityError):
         async with db():
@@ -132,7 +138,7 @@ async def test_rollback(app, db, SQLAlchemyMiddleware):
     #  pytest-cov shows that the line in db.__exit__() rolling back the db session
     #  when there is an Exception is run correctly. However, it would be much better
     #  if we could demonstrate somehow that db.session.rollback() was called e.g. once
-    app.add_middleware(SQLAlchemyMiddleware, db_url=db_url)
+    SQLAlchemyMiddleware(app, db_url=db_url)
 
     with pytest.raises(RuntimeError):
         async with db():
@@ -144,7 +150,7 @@ async def test_rollback(app, db, SQLAlchemyMiddleware):
 @pytest.mark.parametrize("commit_on_exit", [True, False])
 @pytest.mark.asyncio
 async def test_db_context_session_args(app, db, SQLAlchemyMiddleware, commit_on_exit):
-    app.add_middleware(SQLAlchemyMiddleware, db_url=db_url, commit_on_exit=commit_on_exit)
+    SQLAlchemyMiddleware(app, db_url=db_url, commit_on_exit=commit_on_exit)
 
     session_args = {}
 
@@ -158,7 +164,7 @@ async def test_db_context_session_args(app, db, SQLAlchemyMiddleware, commit_on_
 
 @pytest.mark.asyncio
 async def test_multi_sessions(app, db, SQLAlchemyMiddleware):
-    app.add_middleware(SQLAlchemyMiddleware, db_url=db_url)
+    SQLAlchemyMiddleware(app, db_url=db_url)
 
     async with db(multi_sessions=True):
 
@@ -180,7 +186,7 @@ async def test_multi_sessions(app, db, SQLAlchemyMiddleware):
 
 @pytest.mark.asyncio
 async def test_concurrent_inserts(app, db, SQLAlchemyMiddleware):
-    app.add_middleware(SQLAlchemyMiddleware, db_url=db_url)
+    SQLAlchemyMiddleware(app, db_url=db_url)
 
     async with db(multi_sessions=True, commit_on_exit=True):
         await db.session.execute(
