@@ -176,6 +176,56 @@ above. This keeps database access available for the whole body while making it
 clear that the session lifetime belongs to the stream, not the original request
 transaction.
 
+#### SQLAlchemy events (`before_insert`, `after_insert`, ...)
+
+SQLAlchemy's event system is independent of the session/engine — register
+listeners on your mapped classes (or on `Mapper`/`Session`) with
+`sqlalchemy.event.listens_for` exactly as you would with a synchronous
+SQLAlchemy setup. The middleware does not change how events fire.
+
+```python
+from datetime import datetime
+from sqlalchemy import Column, DateTime, Integer, String, event
+from sqlalchemy.orm import DeclarativeBase
+
+
+class Base(DeclarativeBase):
+    pass
+
+
+class User(Base):
+    __tablename__ = "users"
+    id = Column(Integer, primary_key=True)
+    username = Column(String(50), unique=True, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow)
+
+
+@event.listens_for(User, "before_insert")
+def normalize(mapper, connection, target):
+    target.username = target.username.lower().strip()
+
+
+@event.listens_for(User, "before_update")
+def touch_updated_at(mapper, connection, target):
+    target.updated_at = datetime.utcnow()
+
+
+@event.listens_for(User, "after_insert")
+def log_insert(mapper, connection, target):
+    print(f"user created: id={target.id}")
+```
+
+Mapper-level events (`before_insert`, `after_insert`, `before_update`,
+`after_update`, `before_delete`, `after_delete`) receive a synchronous
+`connection` argument — do **not** `await` inside them and do **not** call
+async ORM APIs there. If you need async work after a write, do it after
+`await db.session.commit()` returns, or use `Session`-level events such as
+`after_flush` / `after_commit` and schedule async work from there.
+
+A complete runnable example with validation, timestamps, logging, and
+soft-delete hooks lives at [examples/events_example.py](examples/events_example.py).
+
 #### Usage of multiple databases
 
 databases.py
