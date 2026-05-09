@@ -1,15 +1,25 @@
+from typing import TYPE_CHECKING
+
 from fastapi_async_sqlalchemy.middleware import (
     SQLAlchemyMiddleware,
     create_middleware_and_session_proxy,
     db,
 )
 
-# Export DBSessionMeta type for type hints (Issue #18)
-# Note: DBSessionMeta is the metaclass of db, created dynamically.
-# It can be used in runtime type checks (isinstance, type(db) is DBSessionMeta)
-# but mypy may show warnings when used in type annotations due to its dynamic nature.
-DBSessionMeta = type(db)
-DBSessionType = DBSessionMeta  # Alternative name for backwards compatibility
+# DBSessionMeta exposure (Issue #18).
+#
+# At type-check time, expose a structural Protocol so users get full mypy /
+# IDE autocomplete on ``db.session``, ``db.connection()`` and ``db.gather()``
+# when they annotate code with ``DBSessionMeta``.
+#
+# At runtime, expose the actual metaclass of ``db`` (a closure-local class
+# created by ``create_middleware_and_session_proxy``) so ``isinstance(db,
+# DBSessionMeta)`` and ``type(db) is DBSessionMeta`` keep working as in v0.5.
+if TYPE_CHECKING:
+    from fastapi_async_sqlalchemy._types import DBSessionMeta, DBSessionType
+else:
+    DBSessionMeta = type(db)
+    DBSessionType = DBSessionMeta
 
 __all__ = [
     "db",
@@ -19,4 +29,4 @@ __all__ = [
     "DBSessionType",
 ]
 
-__version__ = "0.8.0a1"
+__version__ = "0.8.0b1"

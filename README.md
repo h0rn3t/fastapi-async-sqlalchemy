@@ -176,6 +176,24 @@ above. This keeps database access available for the whole body while making it
 clear that the session lifetime belongs to the stream, not the original request
 transaction.
 
+#### Type hints for `db`
+
+Use `DBSessionMeta` (or its alias `DBSessionType`) when you need to annotate
+a function or attribute that holds the `db` proxy:
+
+```python
+from fastapi_async_sqlalchemy import DBSessionMeta, db
+
+def get_db() -> DBSessionMeta:
+    return db
+```
+
+At runtime `DBSessionMeta` is the metaclass of `db`, so `isinstance(db,
+DBSessionMeta)` and `type(db) is DBSessionMeta` both work. For static type
+checkers (mypy, pyright) and IDE autocompletion `DBSessionMeta` resolves to
+a structural `Protocol` describing the public API (`session`, `connection`,
+`gather`, and the `db(...)` call).
+
 #### SQLAlchemy events (`before_insert`, `after_insert`, ...)
 
 SQLAlchemy's event system is independent of the session/engine — register
