@@ -7,18 +7,18 @@ from contextvars import ContextVar
 from dataclasses import dataclass, field
 
 from sqlalchemy.engine.url import URL
-from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, create_async_engine
+from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from fastapi_async_sqlalchemy.exceptions import (
     MissingSessionError,
     SessionNotInitialisedError,
 )
-
-try:
-    from sqlalchemy.ext.asyncio import async_sessionmaker
-except ImportError:
-    from sqlalchemy.orm import sessionmaker as async_sessionmaker  # type: ignore
 
 try:
     from sqlmodel.ext.asyncio.session import AsyncSession as SQLModelAsyncSession

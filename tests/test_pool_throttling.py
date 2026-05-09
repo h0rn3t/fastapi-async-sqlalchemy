@@ -693,9 +693,7 @@ async def test_middleware_buffers_unknown_response_message_types():
     async def send(message):
         sent.append(message["type"])
 
-    await middleware(
-        {"type": "http", "method": "GET", "path": "/"}, receive, send
-    )
+    await middleware({"type": "http", "method": "GET", "path": "/"}, receive, send)
 
     assert "http.response.trailers" in sent
 

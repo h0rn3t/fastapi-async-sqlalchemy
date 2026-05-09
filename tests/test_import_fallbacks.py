@@ -5,30 +5,6 @@ These tests verify that the code handles missing optional dependencies gracefull
 """
 
 
-def test_async_sessionmaker_fallback():
-    """Test fallback when async_sessionmaker is not available in SQLAlchemy."""
-    # Note: This test verifies the fallback structure exists.
-    # Actually testing both import paths would require manipulating imports
-    # before module load, which is complex and fragile.
-
-    # Verify the code has proper fallback structure
-    import inspect
-
-    import fastapi_async_sqlalchemy.middleware as mod
-
-    source = inspect.getsource(mod)
-    assert "try:" in source
-    assert "from sqlalchemy.ext.asyncio import async_sessionmaker" in source
-    assert "except ImportError:" in source
-    assert "from sqlalchemy.orm import sessionmaker as async_sessionmaker" in source
-
-    # Verify async_sessionmaker is importable (whichever path was taken)
-    # This exercises one of the two code paths
-    assert hasattr(mod, "async_sessionmaker") or "async_sessionmaker" in dir(
-        mod.create_middleware_and_session_proxy.__code__.co_freevars
-    )
-
-
 def test_sqlmodel_not_installed_fallback():
     """Test fallback when SQLModel is not installed."""
     import inspect

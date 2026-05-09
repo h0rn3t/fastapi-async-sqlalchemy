@@ -27,7 +27,7 @@ setup(
     package_data={"fastapi_async_sqlalchemy": ["py.typed"]},
     zip_safe=False,
     python_requires=">=3.12",
-    install_requires=["starlette>=0.13.6", "SQLAlchemy>=1.4.19"],
+    install_requires=["starlette>=0.40", "SQLAlchemy>=2.0"],
     classifiers=[
         "Development Status :: 5 - Production/Stable",
         "Environment :: Web Environment",
