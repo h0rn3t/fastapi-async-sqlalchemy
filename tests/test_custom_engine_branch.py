@@ -2,6 +2,8 @@
 Targeted test to ensure custom_engine branch (line 61) is executed
 """
 
+import asyncio
+
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -37,12 +39,14 @@ async def test_custom_engine_branch_with_actual_usage():
             value = result.scalar()
             return {"value": value}
 
-    # Test the endpoint
-    client = TestClient(app)
-    response = client.get("/test")
+    try:
+        with TestClient(app) as client:
+            response = client.get("/test")
 
-    assert response.status_code == 200
-    assert response.json()["value"] == 42
+        assert response.status_code == 200
+        assert response.json()["value"] == 42
+    finally:
+        await custom_engine.dispose()
 
 
 def test_custom_engine_without_db_url():
@@ -57,14 +61,17 @@ def test_custom_engine_without_db_url():
     # Create custom engine
     custom_engine = create_async_engine("sqlite+aiosqlite:///:memory:")
 
-    # Initialize middleware with ONLY custom_engine (no db_url)
-    # This should take the else branch at line 61
-    middleware = SQLAlchemyMiddleware(
-        app, custom_engine=custom_engine, engine_args={}, session_args={}
-    )
+    try:
+        # Initialize middleware with ONLY custom_engine (no db_url)
+        # This should take the else branch at line 61
+        middleware = SQLAlchemyMiddleware(
+            app, custom_engine=custom_engine, engine_args={}, session_args={}
+        )
 
-    assert middleware is not None
-    assert middleware.commit_on_exit is False
+        assert middleware is not None
+        assert middleware.commit_on_exit is False
+    finally:
+        asyncio.run(custom_engine.dispose())
 
 
 def test_custom_engine_with_session_args():
@@ -77,13 +84,19 @@ def test_custom_engine_with_session_args():
 
     custom_engine = create_async_engine("sqlite+aiosqlite://")
 
-    # Use custom engine with session args
-    middleware = SQLAlchemyMiddleware(
-        app, custom_engine=custom_engine, session_args={"autoflush": False}, commit_on_exit=True
-    )
+    try:
+        # Use custom engine with session args
+        middleware = SQLAlchemyMiddleware(
+            app,
+            custom_engine=custom_engine,
+            session_args={"autoflush": False},
+            commit_on_exit=True,
+        )
 
-    assert middleware is not None
-    assert middleware.commit_on_exit is True
+        assert middleware is not None
+        assert middleware.commit_on_exit is True
+    finally:
+        asyncio.run(custom_engine.dispose())
 
 
 def test_custom_engine_multiple_instances():
@@ -99,9 +112,13 @@ def test_custom_engine_multiple_instances():
     engine1 = create_async_engine("sqlite+aiosqlite:///:memory:")
     engine2 = create_async_engine("sqlite+aiosqlite://")
 
-    # Create two middleware instances
-    middleware1 = SQLAlchemyMiddleware1(app, custom_engine=engine1)
-    middleware2 = SQLAlchemyMiddleware2(app, custom_engine=engine2)
+    try:
+        # Create two middleware instances
+        middleware1 = SQLAlchemyMiddleware1(app, custom_engine=engine1)
+        middleware2 = SQLAlchemyMiddleware2(app, custom_engine=engine2)
 
-    assert middleware1 is not None
-    assert middleware2 is not None
+        assert middleware1 is not None
+        assert middleware2 is not None
+    finally:
+        asyncio.run(engine1.dispose())
+        asyncio.run(engine2.dispose())

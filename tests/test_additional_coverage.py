@@ -2,6 +2,8 @@
 Additional tests to reach target coverage of 97.22%
 """
 
+import asyncio
+
 from fastapi import FastAPI
 
 
@@ -16,12 +18,15 @@ def test_commit_on_exit_parameter():
 
     # Test commit_on_exit=True
     custom_engine = create_async_engine("sqlite+aiosqlite://")
-    middleware = SQLAlchemyMiddleware(app, custom_engine=custom_engine, commit_on_exit=True)
-    assert middleware.commit_on_exit is True
+    try:
+        middleware = SQLAlchemyMiddleware(app, custom_engine=custom_engine, commit_on_exit=True)
+        assert middleware.commit_on_exit is True
 
-    # Test commit_on_exit=False (default)
-    middleware2 = SQLAlchemyMiddleware(app, custom_engine=custom_engine, commit_on_exit=False)
-    assert middleware2.commit_on_exit is False
+        # Test commit_on_exit=False (default)
+        middleware2 = SQLAlchemyMiddleware(app, custom_engine=custom_engine, commit_on_exit=False)
+        assert middleware2.commit_on_exit is False
+    finally:
+        asyncio.run(custom_engine.dispose())
 
 
 def test_exception_classes_simple():
@@ -48,10 +53,13 @@ def test_middleware_properties():
 
     # Test middleware properties
     custom_engine = create_async_engine("sqlite+aiosqlite://")
-    middleware = SQLAlchemyMiddleware(app, custom_engine=custom_engine, commit_on_exit=True)
+    try:
+        middleware = SQLAlchemyMiddleware(app, custom_engine=custom_engine, commit_on_exit=True)
 
-    assert hasattr(middleware, "commit_on_exit")
-    assert middleware.commit_on_exit is True
+        assert hasattr(middleware, "commit_on_exit")
+        assert middleware.commit_on_exit is True
+    finally:
+        asyncio.run(custom_engine.dispose())
 
 
 def test_basic_imports():
@@ -99,7 +107,10 @@ def test_middleware_factory_different_instances():
     app = FastAPI()
     engine = create_async_engine("sqlite+aiosqlite://")
 
-    middleware1 = SQLAlchemyMiddleware1(app, custom_engine=engine)
-    middleware2 = SQLAlchemyMiddleware2(app, custom_engine=engine)
+    try:
+        middleware1 = SQLAlchemyMiddleware1(app, custom_engine=engine)
+        middleware2 = SQLAlchemyMiddleware2(app, custom_engine=engine)
 
-    assert middleware1 is not middleware2
+        assert middleware1 is not middleware2
+    finally:
+        asyncio.run(engine.dispose())

@@ -4,6 +4,8 @@ These tests document the behavior of lines 18-19 and 26-27
 which only execute in specific import scenarios
 """
 
+import asyncio
+
 import pytest
 
 
@@ -87,12 +89,15 @@ def test_custom_engine_else_branch_execution():
         "sqlite+aiosqlite:///:memory:", echo=False, pool_pre_ping=True
     )
 
-    # Initialize middleware with custom_engine
-    # This should execute line 61: engine = custom_engine
-    middleware = SQLAlchemyMiddleware_local(app, custom_engine=custom_engine)
+    try:
+        # Initialize middleware with custom_engine
+        # This should execute line 61: engine = custom_engine
+        middleware = SQLAlchemyMiddleware_local(app, custom_engine=custom_engine)
 
-    # Verify middleware was created
-    assert middleware is not None
+        # Verify middleware was created
+        assert middleware is not None
+    finally:
+        asyncio.run(custom_engine.dispose())
 
 
 def test_session_tracking_warning_scenario():
@@ -153,8 +158,8 @@ async def test_verify_all_middleware_branches_tested():
     # Test 1: db_url path (line 59: engine = create_async_engine)
     app1 = FastAPI()
     app1.add_middleware(SQLAlchemyMiddleware, db_url="sqlite+aiosqlite://")
-    client1 = TestClient(app1)
-    assert client1 is not None
+    with TestClient(app1) as client1:
+        assert client1 is not None
 
     # Test 2: custom_engine path (line 61: engine = custom_engine)
     from fastapi_async_sqlalchemy.middleware import create_middleware_and_session_proxy
@@ -163,8 +168,11 @@ async def test_verify_all_middleware_branches_tested():
     app2 = FastAPI()
     custom_engine = create_async_engine("sqlite+aiosqlite://")
     app2.add_middleware(SQLAlchemyMiddleware2, custom_engine=custom_engine)
-    client2 = TestClient(app2)
-    assert client2 is not None
+    try:
+        with TestClient(app2) as client2:
+            assert client2 is not None
+    finally:
+        await custom_engine.dispose()
 
 
 def test_coverage_report_explanation():

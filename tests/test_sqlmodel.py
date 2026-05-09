@@ -1,6 +1,5 @@
-from typing import Optional
-
 import pytest
+from fastapi.testclient import TestClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -26,17 +25,17 @@ if SQLMODEL_AVAILABLE:
     class Hero(SQLModel, table=True):  # type: ignore
         __tablename__ = "test_hero"
 
-        id: Optional[int] = Field(default=None, primary_key=True)
+        id: int | None = Field(default=None, primary_key=True)
         name: str = Field(index=True)
         secret_name: str
-        age: Optional[int] = Field(default=None, index=True)
+        age: int | None = Field(default=None, index=True)
 
 
 @pytest.mark.skipif(not SQLMODEL_AVAILABLE, reason="SQLModel not available")
 @pytest.mark.asyncio
 async def test_sqlmodel_session_type(app, db, SQLAlchemyMiddleware):
     """Test that SQLModel's AsyncSession is used when SQLModel is available"""
-    app.add_middleware(SQLAlchemyMiddleware, db_url=db_url)
+    SQLAlchemyMiddleware(app, db_url=db_url)
 
     async with db():
         # Should be SQLModel's AsyncSession, not regular SQLAlchemy AsyncSession
@@ -48,7 +47,7 @@ async def test_sqlmodel_session_type(app, db, SQLAlchemyMiddleware):
 @pytest.mark.asyncio
 async def test_sqlmodel_exec_method_exists(app, db, SQLAlchemyMiddleware):
     """Test that the .exec() method is available on the session"""
-    app.add_middleware(SQLAlchemyMiddleware, db_url=db_url)
+    SQLAlchemyMiddleware(app, db_url=db_url)
 
     async with db():
         # Test that exec method exists
@@ -60,7 +59,7 @@ async def test_sqlmodel_exec_method_exists(app, db, SQLAlchemyMiddleware):
 @pytest.mark.asyncio
 async def test_sqlmodel_exec_method_basic_query(app, db, SQLAlchemyMiddleware):
     """Test that the .exec() method works with basic SQLModel queries"""
-    app.add_middleware(SQLAlchemyMiddleware, db_url=db_url)
+    SQLAlchemyMiddleware(app, db_url=db_url)
 
     async with db():
         # Create tables using the session's bind engine
@@ -79,7 +78,7 @@ async def test_sqlmodel_exec_method_basic_query(app, db, SQLAlchemyMiddleware):
 @pytest.mark.asyncio
 async def test_sqlmodel_exec_crud_operations(app, db, SQLAlchemyMiddleware):
     """Test CRUD operations using SQLModel with .exec() method"""
-    app.add_middleware(SQLAlchemyMiddleware, db_url=db_url)
+    SQLAlchemyMiddleware(app, db_url=db_url)
 
     async with db(commit_on_exit=True):
         # Create tables using the session's bind engine
@@ -110,7 +109,7 @@ async def test_sqlmodel_exec_crud_operations(app, db, SQLAlchemyMiddleware):
 @pytest.mark.asyncio
 async def test_sqlmodel_exec_with_where_clause(app, db, SQLAlchemyMiddleware):
     """Test .exec() method with WHERE clauses"""
-    app.add_middleware(SQLAlchemyMiddleware, db_url=db_url)
+    SQLAlchemyMiddleware(app, db_url=db_url)
 
     async with db(commit_on_exit=True):
         # Create tables using the session's bind engine
@@ -143,7 +142,7 @@ async def test_sqlmodel_exec_with_where_clause(app, db, SQLAlchemyMiddleware):
 @pytest.mark.asyncio
 async def test_sqlmodel_exec_returns_sqlmodel_objects(app, db, SQLAlchemyMiddleware):
     """Test that .exec() returns actual SQLModel objects, not Row objects"""
-    app.add_middleware(SQLAlchemyMiddleware, db_url=db_url)
+    SQLAlchemyMiddleware(app, db_url=db_url)
 
     async with db(commit_on_exit=True):
         # Create tables using the session's bind engine
@@ -173,7 +172,7 @@ async def test_sqlmodel_exec_returns_sqlmodel_objects(app, db, SQLAlchemyMiddlew
 @pytest.mark.asyncio
 async def test_backward_compatibility_with_regular_execute(app, db, SQLAlchemyMiddleware):
     """Test that regular SQLAlchemy .execute() method still works for backward compatibility"""
-    app.add_middleware(SQLAlchemyMiddleware, db_url=db_url)
+    SQLAlchemyMiddleware(app, db_url=db_url)
 
     async with db():
         # Test regular execute with text query
@@ -186,7 +185,7 @@ async def test_backward_compatibility_with_regular_execute(app, db, SQLAlchemyMi
 @pytest.mark.asyncio
 async def test_session_type_without_sqlmodel(app, db, SQLAlchemyMiddleware):
     """Test that when SQLModel is not available, regular AsyncSession is used"""
-    app.add_middleware(SQLAlchemyMiddleware, db_url=db_url)
+    SQLAlchemyMiddleware(app, db_url=db_url)
 
     async with db():
         # Should still be an AsyncSession (either SQLModel or regular)
@@ -201,7 +200,7 @@ async def test_session_type_without_sqlmodel(app, db, SQLAlchemyMiddleware):
 
 @pytest.mark.skipif(not SQLMODEL_AVAILABLE, reason="SQLModel not available")
 @pytest.mark.asyncio
-async def test_sqlmodel_exec_in_route(app, client, db, SQLAlchemyMiddleware):
+async def test_sqlmodel_exec_in_route(app, db, SQLAlchemyMiddleware):
     """Test SQLModel .exec() method works inside FastAPI routes"""
     app.add_middleware(SQLAlchemyMiddleware, db_url=db_url)
 
@@ -227,7 +226,8 @@ async def test_sqlmodel_exec_in_route(app, client, db, SQLAlchemyMiddleware):
             "name": found_hero.name if found_hero else None,
         }
 
-    response = client.get("/test-sqlmodel")
+    with TestClient(app) as client:
+        response = client.get("/test-sqlmodel")
     data = response.json()
     assert data["found"] is True
     assert data["is_sqlmodel"] is True
@@ -238,7 +238,7 @@ async def test_sqlmodel_exec_in_route(app, client, db, SQLAlchemyMiddleware):
 @pytest.mark.asyncio
 async def test_sqlmodel_exec_multi_sessions(app, db, SQLAlchemyMiddleware):
     """Test SQLModel .exec() method works with multi_sessions=True"""
-    app.add_middleware(SQLAlchemyMiddleware, db_url=db_url)
+    SQLAlchemyMiddleware(app, db_url=db_url)
 
     async with db(multi_sessions=True):
         async with db.session.bind.begin() as conn:
@@ -264,7 +264,7 @@ async def test_sqlmodel_exec_multi_sessions(app, db, SQLAlchemyMiddleware):
 @pytest.mark.asyncio
 async def test_sqlmodel_session_has_both_exec_and_execute(app, db, SQLAlchemyMiddleware):
     """Test that SQLModel session has both .exec() and .execute() methods"""
-    app.add_middleware(SQLAlchemyMiddleware, db_url=db_url)
+    SQLAlchemyMiddleware(app, db_url=db_url)
 
     async with db():
         # Should have both methods

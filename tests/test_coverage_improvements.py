@@ -33,8 +33,8 @@ async def test_cleanup_callback_with_closed_loop():
 
         return {"result": result}
 
-    client = TestClient(app)
-    response = client.get("/test_closed_loop")
+    with TestClient(app) as client:
+        response = client.get("/test_closed_loop")
     assert response.status_code == 200
 
 
@@ -60,8 +60,8 @@ async def test_cleanup_callback_runtime_error():
         await asyncio.sleep(0.1)
         return {"result": result}
 
-    client = TestClient(app)
-    response = client.get("/test_runtime_error")
+    with TestClient(app) as client:
+        response = client.get("/test_runtime_error")
     assert response.status_code == 200
 
 
@@ -86,8 +86,8 @@ async def test_multiple_child_tasks_cleanup():
 
         return {"results": results}
 
-    client = TestClient(app)
-    response = client.get("/test_multiple_cleanup")
+    with TestClient(app) as client:
+        response = client.get("/test_multiple_cleanup")
     assert response.status_code == 200
     assert len(response.json()["results"]) == 5
 
@@ -138,8 +138,8 @@ async def test_current_task_none_scenario():
 
         return {"success": True}
 
-    client = TestClient(app)
-    response = client.get("/test_task_context")
+    with TestClient(app) as client:
+        response = client.get("/test_task_context")
     assert response.status_code == 200
 
 
@@ -162,8 +162,8 @@ async def test_edge_case_loop_closing_during_cleanup():
 
         return {"done": True}
 
-    client = TestClient(app)
-    response = client.get("/test_loop_edge")
+    with TestClient(app) as client:
+        response = client.get("/test_loop_edge")
     assert response.status_code == 200
 
 
@@ -191,8 +191,8 @@ async def test_current_task_none_with_mock():
                     return {"success": True, "has_session": True}
                 return {"error": "Session is None"}
 
-    client = TestClient(app)
-    response = client.get("/test_none_task")
+    with TestClient(app) as client:
+        response = client.get("/test_none_task")
     assert response.status_code == 200
     assert response.json()["success"] is True
     assert response.json()["has_session"] is True
@@ -241,9 +241,9 @@ async def test_cleanup_callback_with_mocked_closed_loop():
 
         return {"done": True}
 
-    client = TestClient(app)
-    with pytest.warns(UserWarning, match="No running event loop during cleanup"):
-        response = client.get("/test_mock_closed")
+    with TestClient(app) as client:
+        with pytest.warns(UserWarning, match="No running event loop during cleanup"):
+            response = client.get("/test_mock_closed")
     assert response.status_code == 200
 
 
@@ -281,7 +281,7 @@ async def test_cleanup_callback_with_runtime_error():
 
         return {"done": True}
 
-    client = TestClient(app)
-    with pytest.warns(UserWarning, match="No running event loop during cleanup"):
-        response = client.get("/test_runtime_error")
+    with TestClient(app) as client:
+        with pytest.warns(UserWarning, match="No running event loop during cleanup"):
+            response = client.get("/test_runtime_error")
     assert response.status_code == 200

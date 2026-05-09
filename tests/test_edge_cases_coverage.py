@@ -33,8 +33,8 @@ async def test_multi_session_with_exception_rollback():
 
         return {"status": "rolled_back"}
 
-    client = TestClient(app)
-    response = client.get("/test_exception_rollback")
+    with TestClient(app) as client:
+        response = client.get("/test_exception_rollback")
     assert response.status_code == 200
 
 
@@ -59,8 +59,8 @@ async def test_multi_session_commit_failure_raises():
 
         return {"status": "handled"}
 
-    client = TestClient(app, raise_server_exceptions=False)
-    response = client.get("/test_commit_failure_warning")
+    with TestClient(app, raise_server_exceptions=False) as client:
+        response = client.get("/test_commit_failure_warning")
     assert response.status_code == 500
 
 
@@ -89,8 +89,8 @@ async def test_multi_session_rollback_failure_raises():
 
         return {"status": "handled"}
 
-    client = TestClient(app, raise_server_exceptions=False)
-    response = client.get("/test_rollback_failure")
+    with TestClient(app, raise_server_exceptions=False) as client:
+        response = client.get("/test_rollback_failure")
     assert response.status_code == 500
 
 
@@ -118,8 +118,8 @@ async def test_multi_session_close_failure_raises():
 
         return {"status": "handled"}
 
-    client = TestClient(app, raise_server_exceptions=False)
-    response = client.get("/test_close_failure")
+    with TestClient(app, raise_server_exceptions=False) as client:
+        response = client.get("/test_close_failure")
     assert response.status_code == 500
 
 
@@ -154,8 +154,8 @@ async def test_single_session_commit_exception_rollback():
 
         return {"status": "handled", "rollback_called": rollback_called}
 
-    client = TestClient(app)
-    response = client.get("/test_commit_exception")
+    with TestClient(app) as client:
+        response = client.get("/test_commit_exception")
     # The exception should propagate
     assert response.status_code == 500 or response.status_code == 200
 
@@ -173,8 +173,8 @@ async def test_session_created_without_tracking_warning():
     app = FastAPI()
     app.add_middleware(SQLAlchemyMiddleware_local, db_url="sqlite+aiosqlite:///:memory:")
 
-    # Initialize middleware
-    TestClient(app)
+    with TestClient(app):
+        pass
 
     # This test verifies the warning path exists
     # In normal usage, the tracking set is always created in __aenter__
@@ -190,11 +190,18 @@ def test_custom_engine_branch():
     # Create custom engine
     custom_engine = create_async_engine("sqlite+aiosqlite:///:memory:")
 
-    # This should use the else branch on line 61
-    middleware = SQLAlchemyMiddleware_local(app, custom_engine=custom_engine, commit_on_exit=False)
+    try:
+        # This should use the else branch on line 61
+        middleware = SQLAlchemyMiddleware_local(
+            app,
+            custom_engine=custom_engine,
+            commit_on_exit=False,
+        )
 
-    assert middleware is not None
-    assert middleware.commit_on_exit is False
+        assert middleware is not None
+        assert middleware.commit_on_exit is False
+    finally:
+        asyncio.run(custom_engine.dispose())
 
 
 @pytest.mark.asyncio
@@ -257,8 +264,8 @@ async def test_multi_session_cleanup_all_paths():
 
         return {"session_count": len(set(sessions))}
 
-    client = TestClient(app)
-    response = client.get("/test_comprehensive")
+    with TestClient(app) as client:
+        response = client.get("/test_comprehensive")
     assert response.status_code == 200
     assert response.json()["session_count"] == 3
 
@@ -278,8 +285,8 @@ async def test_multi_session_no_sessions_created():
 
         return {"status": "ok"}
 
-    client = TestClient(app)
-    response = client.get("/test_no_sessions")
+    with TestClient(app) as client:
+        response = client.get("/test_no_sessions")
     assert response.status_code == 200
 
 
@@ -299,6 +306,6 @@ async def test_single_session_exception_handling():
 
         return {"status": "exception_handled"}
 
-    client = TestClient(app)
-    response = client.get("/test_single_exception")
+    with TestClient(app) as client:
+        response = client.get("/test_single_exception")
     assert response.status_code == 200

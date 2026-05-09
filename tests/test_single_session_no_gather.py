@@ -19,7 +19,7 @@ db_url = "sqlite+aiosqlite://"
 @pytest.mark.asyncio
 async def test_single_session_sequential_queries(app, db, SQLAlchemyMiddleware):
     """Sequential queries should work with single session."""
-    app.add_middleware(SQLAlchemyMiddleware, db_url=db_url)
+    SQLAlchemyMiddleware(app, db_url=db_url)
 
     async with db():
         result1 = await db.session.execute(text("SELECT 1"))
@@ -31,7 +31,7 @@ async def test_single_session_sequential_queries(app, db, SQLAlchemyMiddleware):
 @pytest.mark.asyncio
 async def test_single_session_same_instance(app, db, SQLAlchemyMiddleware):
     """Same session instance should be returned within context."""
-    app.add_middleware(SQLAlchemyMiddleware, db_url=db_url)
+    SQLAlchemyMiddleware(app, db_url=db_url)
 
     async with db():
         session1 = db.session
@@ -43,7 +43,7 @@ async def test_single_session_same_instance(app, db, SQLAlchemyMiddleware):
 @pytest.mark.asyncio
 async def test_single_session_gather_fails(app, db, SQLAlchemyMiddleware):
     """asyncio.gather() without multi_sessions=True should raise an error."""
-    app.add_middleware(SQLAlchemyMiddleware, db_url=db_url)
+    SQLAlchemyMiddleware(app, db_url=db_url)
 
     with pytest.raises((InvalidRequestError, IllegalStateChangeError)):
         async with db():
@@ -56,13 +56,13 @@ async def test_single_session_gather_fails(app, db, SQLAlchemyMiddleware):
 @pytest.mark.asyncio
 async def test_multi_sessions_gather_with_tasks(app, db, SQLAlchemyMiddleware):
     """asyncio.gather() with multi_sessions=True and create_task should work."""
-    app.add_middleware(SQLAlchemyMiddleware, db_url=db_url)
+    SQLAlchemyMiddleware(app, db_url=db_url)
 
     async with db(multi_sessions=True):
 
         async def query(n):
             res = await db.session.execute(text(f"SELECT {n}"))
-            return res
+            return res.scalar()
 
         tasks = [
             asyncio.create_task(query(1)),
@@ -70,12 +70,11 @@ async def test_multi_sessions_gather_with_tasks(app, db, SQLAlchemyMiddleware):
         ]
         results = await asyncio.gather(*tasks)
 
-        assert results[0].scalar() == 1
-        assert results[1].scalar() == 2
+        assert results == [1, 2]
 
 
 @pytest.mark.asyncio
-async def test_single_session_in_route(app, client, db, SQLAlchemyMiddleware):
+async def test_single_session_in_route(app, db, SQLAlchemyMiddleware):
     """Single session should work in route handler."""
     app.add_middleware(SQLAlchemyMiddleware, db_url=db_url)
 
@@ -84,13 +83,16 @@ async def test_single_session_in_route(app, client, db, SQLAlchemyMiddleware):
         result = await db.session.execute(text("SELECT 42"))
         return {"value": result.scalar()}
 
-    response = client.get("/test")
+    from fastapi.testclient import TestClient
+
+    with TestClient(app) as client:
+        response = client.get("/test")
     assert response.status_code == 200
     assert response.json() == {"value": 42}
 
 
 @pytest.mark.asyncio
-async def test_single_session_multiple_sequential_in_route(app, client, db, SQLAlchemyMiddleware):
+async def test_single_session_multiple_sequential_in_route(app, db, SQLAlchemyMiddleware):
     """Multiple sequential queries in route should work."""
     app.add_middleware(SQLAlchemyMiddleware, db_url=db_url)
 
@@ -101,6 +103,9 @@ async def test_single_session_multiple_sequential_in_route(app, client, db, SQLA
         r3 = await db.session.execute(text("SELECT 3"))
         return {"values": [r1.scalar(), r2.scalar(), r3.scalar()]}
 
-    response = client.get("/test-sequential")
+    from fastapi.testclient import TestClient
+
+    with TestClient(app) as client:
+        response = client.get("/test-sequential")
     assert response.status_code == 200
     assert response.json() == {"values": [1, 2, 3]}

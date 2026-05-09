@@ -12,24 +12,34 @@ jobs:
     name: test
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
-        build: [linux_3.12, windows_3.12, mac_3.12, linux_3.13, linux_3.14]
+        build: [linux_3.12, windows_3.12, mac_3.12, linux_3.13, linux_3.14, linux_3.15]
         include:
         - build: linux_3.12
           os: ubuntu-latest
-          python: 3.12
+          python: '3.12'
+          allow-prereleases: false
         - build: linux_3.13
           os: ubuntu-latest
-          python: 3.13
+          python: '3.13'
+          allow-prereleases: false
         - build: linux_3.14
           os: ubuntu-latest
-          python: 3.14
+          python: '3.14'
+          allow-prereleases: false
+        - build: linux_3.15
+          os: ubuntu-latest
+          python: '3.15'
+          allow-prereleases: true
         - build: windows_3.12
           os: windows-latest
-          python: 3.12
+          python: '3.12'
+          allow-prereleases: false
         - build: mac_3.12
           os: macos-latest
-          python: 3.12
+          python: '3.12'
+          allow-prereleases: false
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
@@ -38,6 +48,7 @@ jobs:
       uses: actions/setup-python@v5
       with:
         python-version: ${{ matrix.python }}
+        allow-prereleases: ${{ matrix.allow-prereleases }}
 
     - name: Install dependencies
       run: |

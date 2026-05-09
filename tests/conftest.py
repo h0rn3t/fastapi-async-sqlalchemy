@@ -1,5 +1,3 @@
-import sys
-
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -17,26 +15,17 @@ def client(app):
 
 
 @pytest.fixture
-def SQLAlchemyMiddleware():
-    from fastapi_async_sqlalchemy import SQLAlchemyMiddleware
+def middleware_pair():
+    from fastapi_async_sqlalchemy import create_middleware_and_session_proxy
 
-    yield SQLAlchemyMiddleware
+    return create_middleware_and_session_proxy()
 
 
 @pytest.fixture
-def db():
-    from fastapi_async_sqlalchemy import db
+def SQLAlchemyMiddleware(middleware_pair):
+    return middleware_pair[0]
 
-    yield db
 
-    # force reloading of module to clear global state
-
-    try:
-        del sys.modules["fastapi_async_sqlalchemy"]
-    except KeyError:
-        pass
-
-    try:
-        del sys.modules["fastapi_async_sqlalchemy.middleware"]
-    except KeyError:
-        pass
+@pytest.fixture
+def db(middleware_pair):
+    return middleware_pair[1]

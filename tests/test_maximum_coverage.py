@@ -48,8 +48,8 @@ async def test_multi_session_cleanup_with_commit_exception():
 
             return {"session_id": id(session)}
 
-    client = TestClient(app, raise_server_exceptions=False)
-    response = client.get("/test_commit_failure")
+    with TestClient(app, raise_server_exceptions=False) as client:
+        response = client.get("/test_commit_failure")
     assert response.status_code == 500
 
 
@@ -82,8 +82,8 @@ async def test_multi_session_commit_on_exit_success():
 
             return {"status": "ok"}
 
-    client = TestClient(app)
-    response = client.get("/test_commit_success")
+    with TestClient(app) as client:
+        response = client.get("/test_commit_success")
     assert response.status_code == 200
 
     # Give cleanup time to run
@@ -114,8 +114,8 @@ async def test_multi_session_multiple_tasks_with_cleanup():
             results = await asyncio.gather(*tasks)
             return {"results": results, "session_count": len(set(session_ids))}
 
-    client = TestClient(app)
-    response = client.get("/test_multi_cleanup")
+    with TestClient(app) as client:
+        response = client.get("/test_multi_cleanup")
     assert response.status_code == 200
 
 
@@ -173,9 +173,12 @@ def test_custom_engine_path():
     app = FastAPI()
     custom_engine = create_async_engine("sqlite+aiosqlite:///:memory:")
 
-    # Initialize with custom engine
-    middleware = SQLAlchemyMiddleware_local(app, custom_engine=custom_engine)
-    assert middleware.commit_on_exit is False
+    try:
+        # Initialize with custom engine
+        middleware = SQLAlchemyMiddleware_local(app, custom_engine=custom_engine)
+        assert middleware.commit_on_exit is False
+    finally:
+        asyncio.run(custom_engine.dispose())
 
     # Verify it doesn't require db_url
     # This covers the else branch on line 61
@@ -188,10 +191,7 @@ async def test_session_outside_middleware_context():
     SQLAlchemyMiddleware_local, db_local = create_middleware_and_session_proxy()
 
     app = FastAPI()
-    app.add_middleware(SQLAlchemyMiddleware_local, db_url="sqlite+aiosqlite://")
-
-    # Initialize the middleware
-    TestClient(app)
+    SQLAlchemyMiddleware_local(app, db_url="sqlite+aiosqlite://")
 
     # Try to access session outside of request context
     with pytest.raises(MissingSessionError):
@@ -216,8 +216,8 @@ async def test_multi_session_mode_context_vars():
 
             return {"status": "ok"}
 
-    client = TestClient(app)
-    response = client.get("/test_context_vars")
+    with TestClient(app) as client:
+        response = client.get("/test_context_vars")
     assert response.status_code == 200
 
 
@@ -240,8 +240,8 @@ async def test_regular_session_context_exit_with_exception():
 
         return {"status": "rolled_back"}
 
-    client = TestClient(app)
-    response = client.get("/test_rollback")
+    with TestClient(app) as client:
+        response = client.get("/test_rollback")
     assert response.status_code == 200
 
 
@@ -260,8 +260,8 @@ async def test_regular_session_commit_on_exit():
 
         return {"status": "committed"}
 
-    client = TestClient(app)
-    response = client.get("/test_commit")
+    with TestClient(app) as client:
+        response = client.get("/test_commit")
     assert response.status_code == 200
 
 
@@ -275,10 +275,9 @@ def test_middleware_commit_on_exit_parameter():
     middleware = SQLAlchemyMiddleware_local(app, db_url="sqlite+aiosqlite://", commit_on_exit=True)
     assert middleware.commit_on_exit is True
 
-    # Test with commit_on_exit=False
-    middleware2 = SQLAlchemyMiddleware_local(
-        app, db_url="sqlite+aiosqlite://", commit_on_exit=False
-    )
+    # Test with commit_on_exit=False on a separate proxy to avoid rebinding the singleton.
+    SecondMiddleware, _ = create_middleware_and_session_proxy()
+    middleware2 = SecondMiddleware(app, db_url="sqlite+aiosqlite://", commit_on_exit=False)
     assert middleware2.commit_on_exit is False
 
 
@@ -329,8 +328,8 @@ async def test_multi_session_token_reset():
         # Verify by trying to access session (should raise MissingSessionError)
         return {"status": "ok"}
 
-    client = TestClient(app)
-    response = client.get("/test_token_reset")
+    with TestClient(app) as client:
+        response = client.get("/test_token_reset")
     assert response.status_code == 200
 
 
@@ -351,8 +350,8 @@ async def test_session_args_parameter():
 
         return {"value": value}
 
-    client = TestClient(app)
-    response = client.get("/test_session_args")
+    with TestClient(app) as client:
+        response = client.get("/test_session_args")
     assert response.status_code == 200
     assert response.json()["value"] == 42
 
@@ -372,8 +371,8 @@ async def test_multi_session_without_commit_on_exit():
 
         return {"status": "no_commit"}
 
-    client = TestClient(app)
-    response = client.get("/test_no_commit")
+    with TestClient(app) as client:
+        response = client.get("/test_no_commit")
     assert response.status_code == 200
 
 
@@ -398,8 +397,8 @@ async def test_task_done_callback_cleanup():
 
         return {"result": result}
 
-    client = TestClient(app)
-    response = client.get("/test_callback")
+    with TestClient(app) as client:
+        response = client.get("/test_callback")
     assert response.status_code == 200
 
     # Give cleanup time to execute

@@ -82,7 +82,7 @@ def test_backwards_compatibility_with_old_code():
 
 def test_type_checking_with_callable():
     """Test that DBSessionMeta works with callable type checking"""
-    from typing import Callable
+    from collections.abc import Callable
 
     def factory() -> Callable[[], DBSessionMeta]:  # type: ignore[valid-type]
         def get_session() -> DBSessionMeta:  # type: ignore[valid-type]
@@ -146,9 +146,8 @@ def test_type_annotation_in_function_signature():
         return session_proxy is db
 
     # Pattern 3: Optional type
-    from typing import Optional
 
-    def func3() -> Optional[DBSessionMeta]:
+    def func3() -> DBSessionMeta | None:
         return db
 
     # Verify all patterns work

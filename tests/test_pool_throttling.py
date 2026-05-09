@@ -55,7 +55,9 @@ def _get_session_closure_var(db_obj, var_name: str):
     session_prop = type(db_obj).__dict__["session"]
     closure = {
         name: cell.cell_contents
-        for name, cell in zip(session_prop.fget.__code__.co_freevars, session_prop.fget.__closure__)
+        for name, cell in zip(
+            session_prop.fget.__code__.co_freevars, session_prop.fget.__closure__, strict=False
+        )
     }
     return closure[var_name]
 
@@ -445,7 +447,7 @@ async def test_connection_and_session_interop():
 @pytest.mark.asyncio
 async def test_connection_ctx_non_multi_sessions(app, db, SQLAlchemyMiddleware):
     """db.connection() works in regular (non-multi_sessions) mode too."""
-    app.add_middleware(SQLAlchemyMiddleware, db_url=db_url)
+    SQLAlchemyMiddleware(app, db_url=db_url)
 
     async with db():
         async with db.connection() as session:
