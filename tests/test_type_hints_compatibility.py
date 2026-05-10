@@ -210,3 +210,34 @@ def test_multiple_imports():
     assert db1 is db2
     assert type(db1) is Meta1
     assert type(db2) is Meta2
+
+
+def test_protocol_describes_public_api():
+    """The static-typing Protocol must list every public attribute of `db`.
+
+    Issue #18 — guarantee that mypy/IDE see the full public surface of the
+    proxy via the `DBSessionMeta` annotation, not just an opaque `type`.
+    """
+    from fastapi_async_sqlalchemy._types import DBSessionMeta as ProtocolMeta
+
+    # Protocol attributes that mypy / IDEs will see.
+    expected = {"session", "connection", "gather", "__call__"}
+    declared = set(getattr(ProtocolMeta, "__protocol_attrs__", set()))
+    assert expected.issubset(declared), f"Protocol is missing expected attrs: {expected - declared}"
+
+    # Each declared attribute must actually exist on `type(db)` so the
+    # annotation is structurally honest.
+    for attr in expected:
+        assert hasattr(type(db), attr), f"type(db) is missing public attr {attr!r}"
+
+
+def test_protocol_runtime_checkable_against_db():
+    """`isinstance(db, DBSessionMeta)` must succeed via the Protocol path too."""
+    from fastapi_async_sqlalchemy._types import DBSessionMeta as ProtocolMeta
+
+    assert isinstance(db, ProtocolMeta)
+
+    from fastapi_async_sqlalchemy.middleware import create_middleware_and_session_proxy
+
+    _, custom_db = create_middleware_and_session_proxy()
+    assert isinstance(custom_db, ProtocolMeta)
