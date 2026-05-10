@@ -34,7 +34,7 @@ except ImportError:
     DefaultAsyncSession: type[AsyncSession] = AsyncSession  # type: ignore
 
 
-def create_middleware_and_session_proxy() -> tuple[type, "_DBSessionMetaProtocol"]:
+def create_middleware_and_session_proxy() -> tuple[type, _DBSessionMetaProtocol]:
     _Session: async_sessionmaker | None = None
     _Session_engine: AsyncEngine | None = None
     _session: ContextVar[AsyncSession | None] = ContextVar("_session", default=None)
