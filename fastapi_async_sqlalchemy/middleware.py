@@ -5,6 +5,7 @@ import logging
 import warnings
 from contextvars import ContextVar
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, cast
 
 from sqlalchemy.engine.url import URL
 from sqlalchemy.ext.asyncio import (
@@ -20,6 +21,11 @@ from fastapi_async_sqlalchemy.exceptions import (
     SessionNotInitialisedError,
 )
 
+if TYPE_CHECKING:
+    # Imported under an alias to avoid colliding with the closure-local
+    # `DBSessionMeta` metaclass defined inside ``create_middleware_and_session_proxy``.
+    from fastapi_async_sqlalchemy._types import DBSessionMeta as _DBSessionMetaProtocol
+
 try:
     from sqlmodel.ext.asyncio.session import AsyncSession as SQLModelAsyncSession
 
@@ -28,7 +34,7 @@ except ImportError:
     DefaultAsyncSession: type[AsyncSession] = AsyncSession  # type: ignore
 
 
-def create_middleware_and_session_proxy() -> tuple:
+def create_middleware_and_session_proxy() -> tuple[type, "_DBSessionMetaProtocol"]:
     _Session: async_sessionmaker | None = None
     _Session_engine: AsyncEngine | None = None
     _session: ContextVar[AsyncSession | None] = ContextVar("_session", default=None)
@@ -771,7 +777,11 @@ def create_middleware_and_session_proxy() -> tuple:
                         _request_session.reset(self.request_session_token)
                     _session.reset(self.token)
 
-    return _SQLAlchemyMiddleware, DBSession
+    # `db` is the `DBSession` class itself; its public API (`session`,
+    # `connection`, `gather`, `__call__`) lives on the metaclass. Cast to the
+    # `DBSessionMeta` Protocol so static type checkers see that surface
+    # instead of the class object's own attributes.
+    return _SQLAlchemyMiddleware, cast("_DBSessionMetaProtocol", DBSession)
 
 
 SQLAlchemyMiddleware, db = create_middleware_and_session_proxy()

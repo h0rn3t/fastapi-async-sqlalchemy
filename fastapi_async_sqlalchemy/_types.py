@@ -51,7 +51,7 @@ class DBSessionMeta(Protocol):
 
     def __call__(
         self,
-        session_args: dict | None = ...,
+        session_args: dict[str, Any] | None = ...,
         commit_on_exit: bool = ...,
         multi_sessions: bool = ...,
         max_concurrent: int | None = ...,
