@@ -1,0 +1,138 @@
+/* ==========================================================================
+   FastAPI Async SQLAlchemy — custom theme layer on top of Material
+   ========================================================================== */
+
+:root {
+  --fas-teal: #0e8a8a;
+  --fas-teal-bright: #12b3b3;
+  --fas-ink: #0b2027;
+}
+
+/* Brand color tuning for the teal primary palette */
+[data-md-color-primary="teal"] {
+  --md-primary-fg-color: var(--fas-teal);
+  --md-primary-fg-color--light: var(--fas-teal-bright);
+  --md-primary-fg-color--dark: #0a6b6b;
+}
+
+/* --------------------------------------------------------------------------
+   Hero banner (home page)
+   -------------------------------------------------------------------------- */
+.fas-hero {
+  margin: -1.2rem -0.8rem 2.5rem;
+  padding: 4rem 1.5rem 3.5rem;
+  text-align: center;
+  color: #fff;
+  background:
+    radial-gradient(1200px 400px at 50% -10%, rgba(255, 255, 255, 0.18), transparent 60%),
+    linear-gradient(135deg, #0a6b6b 0%, #0e8a8a 45%, #12b3b3 100%);
+  border-radius: 0 0 24px 24px;
+  box-shadow: inset 0 -1px 0 rgba(0, 0, 0, 0.08);
+}
+
+.fas-hero h1 {
+  font-size: 2.7rem;
+  font-weight: 800;
+  line-height: 1.1;
+  margin: 0 0 0.6rem;
+  color: #fff;
+  letter-spacing: -0.02em;
+}
+
+.fas-hero p {
+  max-width: 40rem;
+  margin: 0 auto 1.6rem;
+  font-size: 1.05rem;
+  line-height: 1.6;
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.fas-hero .fas-cta {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.7rem;
+  justify-content: center;
+}
+
+.fas-hero .md-button {
+  border-radius: 999px;
+  font-weight: 600;
+}
+
+.fas-hero .md-button--primary {
+  background: #fff;
+  color: var(--fas-teal) !important;
+  border-color: #fff;
+}
+
+.fas-hero .md-button:not(.md-button--primary) {
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.7);
+}
+
+.fas-hero .md-button:not(.md-button--primary):hover {
+  background: rgba(255, 255, 255, 0.14);
+  border-color: #fff;
+}
+
+.fas-badges {
+  margin-top: 1.6rem;
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.fas-badges img {
+  height: 20px;
+}
+
+/* --------------------------------------------------------------------------
+   Feature cards (Material "grid cards" enhancement)
+   -------------------------------------------------------------------------- */
+.md-typeset .grid.cards > ul > li,
+.md-typeset .grid.cards > :is(ul, ol) > li {
+  border-radius: 14px;
+  border: 1px solid var(--md-default-fg-color--lightest);
+  transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+}
+
+.md-typeset .grid.cards > ul > li:hover {
+  border-color: var(--fas-teal-bright);
+  box-shadow: 0 10px 28px -16px rgba(14, 138, 138, 0.55);
+  transform: translateY(-2px);
+}
+
+.md-typeset .grid.cards .twemoji,
+.md-typeset .grid.cards .lg {
+  color: var(--fas-teal);
+}
+
+/* --------------------------------------------------------------------------
+   Code & inline polish
+   -------------------------------------------------------------------------- */
+.md-typeset :not(pre) > code {
+  border-radius: 5px;
+}
+
+.md-typeset .admonition,
+.md-typeset details {
+  border-radius: 10px;
+}
+
+/* Tables breathe a little more */
+.md-typeset table:not([class]) {
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+/* Footer / nav tab accent */
+.md-tabs {
+  box-shadow: inset 0 -1px 0 rgba(255, 255, 255, 0.12);
+}
+
+@media screen and (max-width: 44.9em) {
+  .fas-hero h1 {
+    font-size: 2rem;
+  }
+}
