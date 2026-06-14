@@ -46,7 +46,10 @@ async def setup_table(app, db, SQLAlchemyMiddleware, table_name):
             text(f"CREATE TABLE {table_name} (id SERIAL PRIMARY KEY, name TEXT NOT NULL)")
         )
         await db.session.execute(
-            text(f"INSERT INTO {table_name} (name) SELECT 'row_' || g FROM generate_series(1, 50) g")
+            text(
+                f"INSERT INTO {table_name} (name) "
+                "SELECT 'row_' || g FROM generate_series(1, 50) g"
+            )
         )
     try:
         yield
