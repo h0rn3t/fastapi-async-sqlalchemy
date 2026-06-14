@@ -1,0 +1,6 @@
+interface:
+  display_name: "Fastapi Async Sqlalchemy"
+  short_description: "Repo-specific patterns and workflows for fastapi-async-sqlalchemy"
+  default_prompt: "Use the fastapi-async-sqlalchemy repo skill to follow existing architecture, testing, and workflow conventions."
+policy:
+  allow_implicit_invocation: true
