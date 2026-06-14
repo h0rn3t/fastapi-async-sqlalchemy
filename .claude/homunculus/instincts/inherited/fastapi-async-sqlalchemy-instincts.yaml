@@ -1,0 +1,277 @@
+# Instincts generated from https://github.com/h0rn3t/fastapi-async-sqlalchemy
+# Generated: 2026-06-14T18:43:59.770Z
+# Version: 2.0
+# NOTE: This file supplements (does not replace) any existing curated instincts.
+# High-confidence manually curated instincts should be preserved alongside these.
+
+---
+id: fastapi-async-sqlalchemy-commit-length
+trigger: "when writing a commit message"
+confidence: 0.6
+domain: git
+source: repo-analysis
+source_repo: https://github.com/h0rn3t/fastapi-async-sqlalchemy
+---
+
+# Fastapi Async Sqlalchemy Commit Length
+
+## Action
+
+Keep commit messages concise (~27 characters)
+
+## Evidence
+
+- Average commit message length: 27 chars
+- Based on 2 commits
+
+---
+id: fastapi-async-sqlalchemy-naming-files
+trigger: "when creating a new file"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/h0rn3t/fastapi-async-sqlalchemy
+---
+
+# Fastapi Async Sqlalchemy Naming Files
+
+## Action
+
+Use snake_case naming convention
+
+## Evidence
+
+- Analyzed file naming patterns in repository
+- Dominant pattern: snake_case
+
+---
+id: fastapi-async-sqlalchemy-import-relative
+trigger: "when importing modules"
+confidence: 0.75
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/h0rn3t/fastapi-async-sqlalchemy
+---
+
+# Fastapi Async Sqlalchemy Import Relative
+
+## Action
+
+Use relative imports for project files
+
+## Evidence
+
+- Import analysis shows relative import pattern
+- Example: import { x } from '../lib/x'
+
+---
+id: fastapi-async-sqlalchemy-export-style
+trigger: "when exporting from a module"
+confidence: 0.7
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/h0rn3t/fastapi-async-sqlalchemy
+---
+
+# Fastapi Async Sqlalchemy Export Style
+
+## Action
+
+Prefer named exports
+
+## Evidence
+
+- Export pattern analysis
+- Dominant style: named
+
+---
+id: fastapi-async-sqlalchemy-test-separate
+trigger: "when writing tests"
+confidence: 0.8
+domain: testing
+source: repo-analysis
+source_repo: https://github.com/h0rn3t/fastapi-async-sqlalchemy
+---
+
+# Fastapi Async Sqlalchemy Test Separate
+
+## Action
+
+Place tests in the tests/ or __tests__/ directory, mirroring src structure
+
+## Evidence
+
+- Separate test directory pattern detected
+- Tests live in dedicated test folders
+
+---
+id: fastapi-async-sqlalchemy-instinct-file-naming
+trigger: "When creating a new Python file"
+confidence: 0.9
+domain: code-style
+source: repo-analysis
+source_repo: h0rn3t/fastapi-async-sqlalchemy
+---
+
+# Fastapi Async Sqlalchemy Instinct File Naming
+
+## Action
+
+Name the file using snake_case
+
+## Evidence
+
+- Pattern in files: all Python files use snake_case
+
+---
+id: fastapi-async-sqlalchemy-instinct-function-naming
+trigger: "When defining a new function"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: h0rn3t/fastapi-async-sqlalchemy
+---
+
+# Fastapi Async Sqlalchemy Instinct Function Naming
+
+## Action
+
+Name the function using camelCase
+
+## Evidence
+
+- Pattern in files: functions use camelCase
+
+---
+id: fastapi-async-sqlalchemy-instinct-class-naming
+trigger: "When defining a new class"
+confidence: 0.9
+domain: code-style
+source: repo-analysis
+source_repo: h0rn3t/fastapi-async-sqlalchemy
+---
+
+# Fastapi Async Sqlalchemy Instinct Class Naming
+
+## Action
+
+Name the class using PascalCase
+
+## Evidence
+
+- Pattern in files: classes use PascalCase
+
+---
+id: fastapi-async-sqlalchemy-instinct-constant-naming
+trigger: "When defining a constant"
+confidence: 0.9
+domain: code-style
+source: repo-analysis
+source_repo: h0rn3t/fastapi-async-sqlalchemy
+---
+
+# Fastapi Async Sqlalchemy Instinct Constant Naming
+
+## Action
+
+Name the constant using SCREAMING_SNAKE_CASE
+
+## Evidence
+
+- Pattern in files: constants use SCREAMING_SNAKE_CASE
+
+---
+id: fastapi-async-sqlalchemy-instinct-import-style
+trigger: "When importing modules within the package"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: h0rn3t/fastapi-async-sqlalchemy
+---
+
+# Fastapi Async Sqlalchemy Instinct Import Style
+
+## Action
+
+Use relative imports
+
+## Evidence
+
+- Pattern in files: relative imports used
+
+---
+id: fastapi-async-sqlalchemy-instinct-export-style
+trigger: "When exporting functions or classes from a module"
+confidence: 0.7
+domain: code-style
+source: repo-analysis
+source_repo: h0rn3t/fastapi-async-sqlalchemy
+---
+
+# Fastapi Async Sqlalchemy Instinct Export Style
+
+## Action
+
+Use named exports (explicitly define __all__ or direct exports)
+
+## Evidence
+
+- Pattern in files: named exports observed
+
+---
+id: fastapi-async-sqlalchemy-instinct-test-location
+trigger: "When adding new tests"
+confidence: 0.9
+domain: testing
+source: repo-analysis
+source_repo: h0rn3t/fastapi-async-sqlalchemy
+---
+
+# Fastapi Async Sqlalchemy Instinct Test Location
+
+## Action
+
+Place test files in the separate 'tests' folder
+
+## Evidence
+
+- Pattern in folder structure: 'tests' folder exists and contains tests
+
+---
+id: fastapi-async-sqlalchemy-instinct-commit-format
+trigger: "When writing a commit message"
+confidence: 0.8
+domain: git
+source: repo-analysis
+source_repo: h0rn3t/fastapi-async-sqlalchemy
+---
+
+# Fastapi Async Sqlalchemy Instinct Commit Format
+
+## Action
+
+Write a short, freeform message without a prefix, averaging around 27 characters
+
+## Evidence
+
+- Pattern in commits: freeform, short messages, e.g., 'added concurrent operations are not permitted'
+
+---
+id: fastapi-async-sqlalchemy-instinct-ci-config
+trigger: "When configuring CI workflows"
+confidence: 0.9
+domain: workflow
+source: repo-analysis
+source_repo: h0rn3t/fastapi-async-sqlalchemy
+---
+
+# Fastapi Async Sqlalchemy Instinct Ci Config
+
+## Action
+
+Place workflow configuration files in '.github/workflows/'
+
+## Evidence
+
+- Pattern in architecture: '.github/workflows/ci.yml' exists
+
