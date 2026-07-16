@@ -58,6 +58,3 @@ class DBSessionMeta(Protocol):
     ) -> AbstractAsyncContextManager[Any]:
         """Open an explicit session context: ``async with db(): ...``."""
         ...
-
-
-DBSessionType = DBSessionMeta

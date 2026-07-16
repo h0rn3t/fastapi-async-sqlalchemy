@@ -6,7 +6,7 @@ proxy itself.
 
 ## Annotating `db` with `DBSessionMeta`
 
-Use `DBSessionMeta` (or its alias `DBSessionType`) when you need to type a
+Use `DBSessionMeta` when you need to type a
 function or attribute that holds the `db` proxy:
 
 ```python
@@ -61,9 +61,6 @@ class DBSessionMeta(Protocol):
         max_concurrent: int | None = ...,
     ) -> AbstractAsyncContextManager[Any]: ...
 ```
-
-`DBSessionType` is an exported alias of `DBSessionMeta` — use whichever name
-reads better in your codebase.
 
 ## Dependency-injection style
 

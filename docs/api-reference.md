@@ -8,7 +8,6 @@ from fastapi_async_sqlalchemy import (
     db,
     create_middleware_and_session_proxy,
     DBSessionMeta,
-    DBSessionType,
 )
 ```
 
@@ -157,11 +156,11 @@ See [Multiple Databases](guide/multi-database.md).
 
 ---
 
-## `DBSessionMeta` / `DBSessionType`
+## `DBSessionMeta`
 
 A structural `Protocol` (at type-check time) and the runtime metaclass of `db`
-(at runtime). Use as an annotation for the `db` proxy. `DBSessionType` is an
-alias of `DBSessionMeta`. See [Type Hints](guide/type-hints.md).
+(at runtime). Use as an annotation for the `db` proxy.
+See [Type Hints](guide/type-hints.md).
 
 ```python
 def get_db() -> DBSessionMeta:

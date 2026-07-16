@@ -7,7 +7,6 @@ import pytest
 
 from fastapi_async_sqlalchemy import (
     DBSessionMeta,
-    DBSessionType,
     db,
 )
 
@@ -16,17 +15,6 @@ def test_dbsessionmeta_is_exported():
     """Test that DBSessionMeta is available for import"""
     assert DBSessionMeta is not None
     assert isinstance(DBSessionMeta, type)
-
-
-def test_dbsessiontype_is_exported():
-    """Test that DBSessionType is available for import (alternative name)"""
-    assert DBSessionType is not None
-    assert isinstance(DBSessionType, type)
-
-
-def test_dbsessionmeta_equals_dbsessiontype():
-    """Test that both names refer to the same type"""
-    assert DBSessionMeta is DBSessionType
 
 
 def test_type_of_db_is_dbsessionmeta():
@@ -46,17 +34,6 @@ def test_type_hints_work():
     result = get_db()
     assert result is db
     assert type(result) is DBSessionMeta
-
-
-def test_alternative_type_hint_name():
-    """Test that DBSessionType works as type hint"""
-
-    def get_db_session() -> DBSessionType:
-        return db
-
-    result = get_db_session()
-    assert result is db
-    assert type(result) is DBSessionType
 
 
 def test_backwards_compatibility_with_old_code():

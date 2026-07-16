@@ -1,3 +1,46 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fastapi-async-sqlalchemy"
+dynamic = ["version"]
+description = "SQLAlchemy middleware for FastAPI"
+readme = "README.md"
+license = "MIT"
+authors = [{ name = "Eugene Shershen", email = "h0rn3t.null@gmail.com" }]
+requires-python = ">=3.12"
+dependencies = ["starlette>=0.40", "SQLAlchemy>=2.0"]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Environment :: Web Environment",
+    "Framework :: AsyncIO",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Programming Language :: Python :: 3.15",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Topic :: Internet :: WWW/HTTP :: HTTP Servers",
+    "Topic :: Internet :: WWW/HTTP :: Dynamic Content",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+
+[project.urls]
+Code = "https://github.com/h0rn3t/fastapi-async-sqlalchemy"
+"Issue tracker" = "https://github.com/h0rn3t/fastapi-async-sqlalchemy/issues"
+
+[tool.setuptools]
+packages = ["fastapi_async_sqlalchemy"]
+
+[tool.setuptools.package-data]
+fastapi_async_sqlalchemy = ["py.typed"]
+
+[tool.setuptools.dynamic]
+version = { attr = "fastapi_async_sqlalchemy.__version__" }
+
 [tool.ruff]
 line-length = 100
 target-version = "py312"

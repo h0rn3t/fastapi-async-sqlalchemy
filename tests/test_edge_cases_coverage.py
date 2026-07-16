@@ -4,16 +4,15 @@ Targets specific uncovered lines in middleware.py
 """
 
 import asyncio
+from unittest.mock import patch
 
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.sql import text
 
 from fastapi_async_sqlalchemy import SQLAlchemyMiddleware, db
-from fastapi_async_sqlalchemy.middleware import create_middleware_and_session_proxy
 
 
 @pytest.mark.asyncio
@@ -161,86 +160,6 @@ async def test_single_session_commit_exception_rollback():
 
 
 @pytest.mark.asyncio
-async def test_session_created_without_tracking_warning():
-    """Test warning when session is created without tracking (lines 117-122)"""
-    # This is tricky to test as it requires accessing session property
-    # outside of proper context setup
-
-    from fastapi_async_sqlalchemy.middleware import create_middleware_and_session_proxy
-
-    SQLAlchemyMiddleware_local, db_local = create_middleware_and_session_proxy()
-
-    app = FastAPI()
-    app.add_middleware(SQLAlchemyMiddleware_local, db_url="sqlite+aiosqlite:///:memory:")
-
-    with TestClient(app):
-        pass
-
-    # This test verifies the warning path exists
-    # In normal usage, the tracking set is always created in __aenter__
-    # so this warning shouldn't occur in production
-
-
-def test_custom_engine_branch():
-    """Test that custom_engine branch is exercised (line 61)"""
-    SQLAlchemyMiddleware_local, db_local = create_middleware_and_session_proxy()
-
-    app = FastAPI()
-
-    # Create custom engine
-    custom_engine = create_async_engine("sqlite+aiosqlite:///:memory:")
-
-    try:
-        # This should use the else branch on line 61
-        middleware = SQLAlchemyMiddleware_local(
-            app,
-            custom_engine=custom_engine,
-            commit_on_exit=False,
-        )
-
-        assert middleware is not None
-        assert middleware.commit_on_exit is False
-    finally:
-        asyncio.run(custom_engine.dispose())
-
-
-@pytest.mark.asyncio
-async def test_import_fallback_coverage():
-    """
-    Test to document import fallback behavior (lines 18-19, 26-27)
-    These lines are only executed in environments without SQLAlchemy 2.0+
-    or without SQLModel installed
-    """
-    # Line 18-19: async_sessionmaker fallback
-    # This is only needed for SQLAlchemy < 2.0
-    # In modern SQLAlchemy (2.0+), async_sessionmaker exists
-
-    try:
-        from sqlalchemy.ext.asyncio import async_sessionmaker
-
-        assert async_sessionmaker is not None
-        # If we're here, lines 18-19 won't execute
-    except ImportError:  # pragma: no cover
-        # In older SQLAlchemy, this would execute
-        from sqlalchemy.orm import sessionmaker
-
-        assert sessionmaker is not None
-
-    # Lines 26-27: SQLModel fallback
-    # These lines execute when SQLModel is NOT installed
-    try:
-        from sqlmodel.ext.asyncio.session import AsyncSession as SQLModelAsyncSession
-
-        # If SQLModel is available, line 27 won't execute
-        assert SQLModelAsyncSession is not None
-    except ImportError:
-        # Line 27 would execute if SQLModel not available
-        from sqlalchemy.ext.asyncio import AsyncSession
-
-        assert AsyncSession is not None
-
-
-@pytest.mark.asyncio
 async def test_multi_session_cleanup_all_paths():
     """Comprehensive test for all multi-session cleanup paths"""
     app = FastAPI()
@@ -308,4 +227,39 @@ async def test_single_session_exception_handling():
 
     with TestClient(app) as client:
         response = client.get("/test_single_exception")
+    assert response.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_cleanup_callback_without_running_loop_warns():
+    """Cleanup callback must warn (not crash) when no event loop is available.
+
+    Covers the `except RuntimeError` fallback when capturing the loop at
+    session creation time and the "No running event loop" warning in the
+    task-done cleanup callback.
+    """
+    app = FastAPI()
+    app.add_middleware(SQLAlchemyMiddleware, db_url="sqlite+aiosqlite:///:memory:")
+
+    @app.get("/test_no_loop")
+    async def test_no_loop():
+        async with db(multi_sessions=True):
+
+            async def child_task():
+                session = db.session
+                await session.execute(text("SELECT 1"))
+                return "done"
+
+            with patch(
+                "asyncio.get_running_loop",
+                side_effect=RuntimeError("No running event loop"),
+            ):
+                task = asyncio.create_task(child_task())
+                await task
+
+        return {"done": True}
+
+    with TestClient(app) as client:
+        with pytest.warns(UserWarning, match="No running event loop during cleanup"):
+            response = client.get("/test_no_loop")
     assert response.status_code == 200

@@ -181,7 +181,7 @@ transaction.
 
 #### Type hints for `db`
 
-Use `DBSessionMeta` (or its alias `DBSessionType`) when you need to annotate
+Use `DBSessionMeta` when you need to annotate
 a function or attribute that holds the `db` proxy:
 
 ```python
