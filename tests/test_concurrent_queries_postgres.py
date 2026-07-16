@@ -47,8 +47,7 @@ async def setup_table(app, db, SQLAlchemyMiddleware, table_name):
         )
         await db.session.execute(
             text(
-                f"INSERT INTO {table_name} (name) "
-                "SELECT 'row_' || g FROM generate_series(1, 50) g"
+                f"INSERT INTO {table_name} (name) SELECT 'row_' || g FROM generate_series(1, 50) g"
             )
         )
     try:
