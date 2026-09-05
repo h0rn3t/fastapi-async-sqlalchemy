@@ -293,6 +293,29 @@ async def test_connection_timeout_on_reused_task_session():
 
 
 @pytest.mark.asyncio
+async def test_engine_deadline_shorter_than_context_deadline_is_not_rewrapped():
+    """A failure raised before the context deadline expires passes through as-is."""
+    from fastapi_async_sqlalchemy import PoolTimeoutError
+
+    middleware, _db = _make_pair(pool_timeout=0.01)
+
+    hold = await middleware.engine.connect()
+    await hold.execute(text("SELECT 1"))
+    try:
+        async with _db(multi_sessions=True):
+            started = asyncio.get_running_loop().time()
+            with pytest.raises(PoolTimeoutError):
+                async with _db.connection(timeout=5):
+                    pass
+            elapsed = asyncio.get_running_loop().time() - started
+    finally:
+        await hold.close()
+
+    assert elapsed < 1, f"waited {elapsed}s — the 5s context deadline should not have been reached"
+    assert middleware.engine.pool.checkedout() == 0
+
+
+@pytest.mark.asyncio
 async def test_connection_timeout_must_be_positive():
     _, _db = _make_pair()
 
@@ -367,6 +390,82 @@ async def test_gather_inherits_context_pool_timeout():
             assert all(isinstance(r, PoolTimeoutError) for r in results)
     finally:
         await hold.close()
+
+
+def _closure_var(db_obj, var_name: str):
+    """Read a closure variable of the proxy's `session` property."""
+    session_prop = type(db_obj).__dict__["session"]
+    closure = {
+        name: cell.cell_contents
+        for name, cell in zip(
+            session_prop.fget.__code__.co_freevars,
+            session_prop.fget.__closure__,
+            strict=False,
+        )
+    }
+    return closure[var_name]
+
+
+@pytest.mark.asyncio
+async def test_connection_rejected_after_context_started_closing():
+    """A deadline must not let a session slip in once the owner is closing."""
+    _, _db = _make_pair()
+
+    async with _db(multi_sessions=True, max_concurrent=1):
+        state = _closure_var(_db, "_multi_state").get()
+        assert state is not None
+        state.closing = True
+        try:
+            with pytest.raises(RuntimeError, match="started closing"):
+                async with _db.connection(timeout=5):
+                    pass
+        finally:
+            state.closing = False
+
+
+@pytest.mark.asyncio
+async def test_context_closing_during_checkout_is_rejected():
+    """The owner can start closing while a task is parked on checkout."""
+    middleware, _db = _make_pair()
+
+    hold = await middleware.engine.connect()
+    await hold.execute(text("SELECT 1"))
+
+    async with _db(multi_sessions=True):
+        state = _closure_var(_db, "_multi_state").get()
+        assert state is not None
+
+        entered = asyncio.Event()
+
+        async def worker():
+            entered.set()
+            async with _db.connection(timeout=5) as session:
+                await session.execute(text("SELECT 1"))
+
+        task = asyncio.create_task(worker())
+        await entered.wait()
+        await asyncio.sleep(0.05)  # let the worker park on the checkout
+
+        state.closing = True
+        await hold.close()  # the checkout can now succeed — but the owner is closing
+
+        try:
+            with pytest.raises(RuntimeError, match="closing"):
+                await task
+        finally:
+            state.closing = False
+
+    assert middleware.engine.pool.checkedout() == 0
+
+
+@pytest.mark.asyncio
+async def test_user_owns_transaction_tolerates_a_missing_session():
+    """The finalization guard runs on every response; it must never raise."""
+    _ensure_modules()
+    from fastapi_async_sqlalchemy.middleware import _user_owns_transaction
+
+    assert _user_owns_transaction(None) is False
+    assert _user_owns_transaction(object()) is False
 
 
 # ---------------------------------------------------------------------------
