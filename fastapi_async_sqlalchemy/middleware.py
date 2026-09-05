@@ -450,7 +450,7 @@ def create_middleware_and_session_proxy() -> tuple[type, _DBSessionMetaProtocol]
             self.exclude_paths = frozenset(exclude_paths or ())
             self.pool_warn_threshold = pool_warn_threshold
             self.pool_warn_interval = pool_warn_interval
-            self._last_pool_warning = 0.0
+            self._last_pool_warning: float | None = None
             self._pool_warn_listener = None
             engine_args = engine_args or {}
             session_args = session_args or {}
@@ -519,7 +519,13 @@ def create_middleware_and_session_proxy() -> tuple[type, _DBSessionMetaProtocol]
 
             def on_checkout(dbapi_connection, connection_record, connection_proxy) -> None:
                 now = time.monotonic()
-                if now - self._last_pool_warning < self.pool_warn_interval:
+                # `None` rather than 0.0: `time.monotonic()` counts from boot on
+                # Linux, so a freshly started container would treat the very
+                # first saturation as "already warned" and stay silent.
+                if (
+                    self._last_pool_warning is not None
+                    and now - self._last_pool_warning < self.pool_warn_interval
+                ):
                     return
                 try:
                     status = _pool_status(self.engine)

@@ -584,6 +584,37 @@ async def test_pool_warning_is_throttled(caplog):
 
 
 @pytest.mark.asyncio
+async def test_first_pool_warning_is_never_throttled(caplog):
+    """The throttle must not swallow the very first warning.
+
+    `time.monotonic()` counts from boot on Linux, so seeding the last-warning
+    timestamp with 0.0 silenced freshly started containers for the length of
+    the interval — exactly when saturation matters most.
+    """
+    _ensure_modules()
+    from fastapi_async_sqlalchemy import create_middleware_and_session_proxy
+
+    Middleware, _db = create_middleware_and_session_proxy()
+    middleware = Middleware(
+        app=None,
+        db_url=db_url,
+        engine_args={
+            "poolclass": AsyncAdaptedQueuePool,
+            "pool_size": 1,
+            "max_overflow": 0,
+        },
+        pool_warn_threshold=0.9,
+        pool_warn_interval=86400,  # far larger than any plausible uptime
+    )
+
+    with caplog.at_level(logging.WARNING, logger="fastapi_async_sqlalchemy.middleware"):
+        connection = await middleware.engine.connect()
+        await connection.close()
+
+    assert len(caplog.records) == 1
+
+
+@pytest.mark.asyncio
 async def test_pool_warning_removed_on_dispose(caplog):
     _ensure_modules()
     from fastapi_async_sqlalchemy import create_middleware_and_session_proxy
