@@ -43,27 +43,58 @@ def _get_closure_var(db_obj, var_name: str):
 @pytest.mark.asyncio
 async def test_request_session_access_after_streaming_close_raises():
     """db.session access after the request session is marked closed-for-streaming
-    raises a clear RuntimeError (middleware.py line 83)."""
+    raises a clear RuntimeError."""
     Middleware, _db = create_middleware_and_session_proxy()
     Middleware(app=None, db_url=DB_URL)
 
-    request_session_var = _get_closure_var(_db, "_request_session")
-    closed_var = _get_closure_var(_db, "_request_session_closed_for_streaming")
-    session_var = _get_closure_var(_db, "_session")
-    Session = _get_closure_var(_db, "_Session")
-
-    session = Session()
-    session_token = session_var.set(session)
-    request_token = request_session_var.set(session)
-    closed_token = closed_var.set(True)
+    # The flag lives on the request-context object rather than in a ContextVar,
+    # so that a child task (any `@app.middleware("http")` runs the app in one)
+    # sees the same state the middleware wrote.
+    request_context = _db(_request_context=True)
+    await request_context.__aenter__()
     try:
+        request_context._closed_for_streaming = True
         with pytest.raises(RuntimeError, match="closed for streaming"):
             _ = _db.session
     finally:
-        closed_var.reset(closed_token)
-        request_session_var.reset(request_token)
-        session_var.reset(session_token)
-        await session.close()
+        await request_context.__aexit__(None, None, None)
+
+
+@pytest.mark.asyncio
+async def test_closed_for_streaming_state_reaches_a_child_task():
+    """A task started before the close must still see it.
+
+    `BaseHTTPMiddleware` runs the application — and therefore any streaming body
+    generator — in a child task, which inherits a *copy* of the context. A
+    ContextVar set by the middleware afterwards would be invisible there, so the
+    generator would hit a bare SQLAlchemy error instead of the explanation.
+    """
+    Middleware, _db = create_middleware_and_session_proxy()
+    Middleware(app=None, db_url=DB_URL)
+
+    request_context = _db(_request_context=True)
+    await request_context.__aenter__()
+    errors = []
+    resume = asyncio.Event()
+
+    async def touch_session_after_the_close():
+        await resume.wait()
+        try:
+            _ = _db.session
+        except RuntimeError as exc:
+            errors.append(str(exc))
+
+    # Started *before* the close, exactly as the body generator's task is.
+    child = asyncio.create_task(touch_session_after_the_close())
+    try:
+        await request_context.close_request_session_for_streaming()
+        resume.set()
+        await child
+    finally:
+        await request_context.__aexit__(None, None, None)
+
+    assert len(errors) == 1
+    assert "closed for streaming" in errors[0]
 
 
 @pytest.mark.asyncio

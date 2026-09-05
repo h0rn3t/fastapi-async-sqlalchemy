@@ -76,6 +76,17 @@ to background tasks rather than request sessions or ORM objects attached to them
 Accessing the finalized request session through `db.session` raises an error
 explaining that an explicit `async with db()` is required.
 
+!!! warning "`@app.middleware("http")` below this middleware breaks the ordering"
+    `BaseHTTPMiddleware` runs the application in a child task and hands
+    response messages to a queue, so that task reaches `self.background()` as
+    soon as the message is queued — while the outer middleware is still
+    awaiting the commit. Background tasks then run *concurrently* with
+    finalization, and a task that deletes the file a `FileResponse` just served
+    can win the race. This affects any outer middleware, not just this one; the
+    only way to rule it out is to write that middleware as pure ASGI instead of
+    `@app.middleware("http")`. A failing commit still prevents a successful
+    response either way, because the response start stays buffered.
+
 **Migration:** background code that previously relied on the request session
 must open its own context. Errors after the response has been sent cannot roll
 back the committed request transaction or change its HTTP status. A failed

@@ -72,6 +72,18 @@ def _user_owns_transaction(session: AsyncSession | None) -> bool:
     return transaction.origin is not SessionTransactionOrigin.AUTOBEGIN
 
 
+def _ends_response_body(message: Message) -> bool:
+    """True when *message* completes the response body.
+
+    ``http.response.pathsend`` hands the file to the server and ends the
+    response, so per the ASGI spec it terminates the body exactly like a final
+    ``http.response.body``.
+    """
+    if message["type"] == "http.response.pathsend":
+        return True
+    return message["type"] == "http.response.body" and not message.get("more_body", False)
+
+
 def _pool_status(engine: AsyncEngine) -> dict[str, Any]:
     """Snapshot the engine's connection pool.
 
@@ -127,15 +139,10 @@ def create_middleware_and_session_proxy() -> tuple[type, _DBSessionMetaProtocol]
         "_request_session",
         default=None,
     )
+    # Holds the request-scoped `DBSession`. Whether that session is still open
+    # is an attribute *on that object* rather than a ContextVar of its own —
+    # see `_check_request_session_open`.
     _request_context: ContextVar[DBSession | None] = ContextVar("_request_context", default=None)
-    _request_session_used: ContextVar[bool] = ContextVar(
-        "_request_session_used",
-        default=False,
-    )
-    _request_session_closed_for_streaming: ContextVar[bool] = ContextVar(
-        "_request_session_closed_for_streaming",
-        default=False,
-    )
     _multi_sessions_ctx: ContextVar[bool] = ContextVar("_multi_sessions_context", default=False)
     _multi_state: ContextVar[_MultiSessionState | None] = ContextVar(
         "_multi_sessions_state",
@@ -196,25 +203,34 @@ def create_middleware_and_session_proxy() -> tuple[type, _DBSessionMetaProtocol]
         details = "; ".join(_cleanup_error(error) for error in errors)
         raise RuntimeError(f"Session cleanup failed with {len(errors)} errors: {details}")
 
-    def _mark_request_session_used(session: AsyncSession) -> None:
-        if session is not _request_session.get():
+    def _check_request_session_open(session: AsyncSession) -> None:
+        """Refuse access to a request session the middleware has already closed.
+
+        The state read here lives on the shared request-context object rather
+        than in ContextVars of its own. ``BaseHTTPMiddleware`` — which is what
+        every ``@app.middleware("http")`` becomes — runs the application in a
+        child task, and that task inherits a *copy* of the context: a ContextVar
+        the middleware sets afterwards is invisible to it, so a streaming
+        generator running there would hit a bare SQLAlchemy error on a closed
+        session instead of the explanation below. Attributes on the shared
+        object are seen by both.
+        """
+        context = _request_context.get()
+        if context is None or session is not _request_session.get():
             return
 
-        if _request_session_closed_for_streaming.get():
+        if context._closed_for_streaming:
             raise RuntimeError(
                 "The middleware-managed request database session is closed for streaming "
                 "response body generation. Use `async with db()` inside the streaming "
                 "generator to make the session lifetime explicit."
             )
 
-        context = _request_context.get()
-        if context is not None and context._finalized:
+        if context._finalized:
             raise RuntimeError(
                 "The middleware-managed request database session is closed after response "
                 "finalization. Use `async with db()` inside background tasks."
             )
-
-        _request_session_used.set(True)
 
     async def _finalize_session(
         session: AsyncSession,
@@ -393,7 +409,7 @@ def create_middleware_and_session_proxy() -> tuple[type, _DBSessionMetaProtocol]
                 session = _session.get()
                 if session is None:
                     raise MissingSessionError
-                _mark_request_session_used(session)
+                _check_request_session_open(session)
                 # The session is borrowed, so a failed checkout must not close
                 # it — the owning context still needs it.
                 if self._timeout is not None:
@@ -498,11 +514,12 @@ def create_middleware_and_session_proxy() -> tuple[type, _DBSessionMetaProtocol]
 
             self.engine = engine
             _Session_engine = engine
+            # Merge before the call, not at it: passing `class_` or
+            # `expire_on_commit` through `session_args` as well as explicitly
+            # raises `TypeError: got multiple values for keyword argument`.
             _Session = async_sessionmaker(
                 engine,
-                class_=DefaultAsyncSession,
-                expire_on_commit=False,
-                **session_args,
+                **{"class_": DefaultAsyncSession, "expire_on_commit": False, **session_args},
             )
 
             if pool_warn_threshold is not None:
@@ -645,7 +662,7 @@ def create_middleware_and_session_proxy() -> tuple[type, _DBSessionMetaProtocol]
 
             async def send_and_release(message: Message) -> None:
                 await send(message)
-                if message["type"] == "http.response.body" and not message.get("more_body", False):
+                if _ends_response_body(message):
                     release_slot()
 
             try:
@@ -674,13 +691,18 @@ def create_middleware_and_session_proxy() -> tuple[type, _DBSessionMetaProtocol]
                     return
                 await request_context._finalize_regular_session(None, None)
 
+            async def flush(message: Message) -> None:
+                """Release the buffered response, ending with *message*."""
+                for buffered_message in buffered_messages:
+                    await send(buffered_message)
+                buffered_messages.clear()
+                await send(message)
+
             async def send_with_db_finalization(message: Message) -> None:
                 nonlocal streaming_passthrough
 
                 if streaming_passthrough:
-                    if message["type"] == "http.response.body" and not message.get(
-                        "more_body", False
-                    ):
+                    if _ends_response_body(message):
                         await finalize_after_response()
                     await send(message)
                     return
@@ -689,23 +711,42 @@ def create_middleware_and_session_proxy() -> tuple[type, _DBSessionMetaProtocol]
                     buffered_messages.append(message)
                     return
 
+                # A pathsend hands the file to the server and ends the response.
+                # Buffering it would let Starlette run the response's background
+                # tasks — which typically delete that very file — before the
+                # server ever reads it, and would pin the connection meanwhile.
+                if message["type"] == "http.response.pathsend":
+                    await finalize_after_response()
+                    await flush(message)
+                    streaming_passthrough = True
+                    return
+
                 if message["type"] == "http.response.body":
                     if message.get("more_body", False):
-                        if self.commit_on_exit and _request_session_used.get():
-                            raise RuntimeError(
-                                "`commit_on_exit=True` cannot use the middleware-managed "
-                                "request database session with a streaming response. Use "
-                                "`async with db()` inside the streaming generator, or manage "
-                                "the streaming transaction explicitly."
-                            )
-
-                        if not _request_session_used.get():
+                        # The body may keep flowing for a long time, so the
+                        # request session is finalized here rather than held
+                        # open for it. This still happens *before* the buffered
+                        # `http.response.start` goes out, so a failing commit
+                        # turns the response into a 500 instead of a 200 whose
+                        # writes were silently lost.
+                        #
+                        # Whether a chunked body is a real stream or an inner
+                        # middleware re-emitting a finished response cannot be
+                        # told apart here — `BaseHTTPMiddleware` produces the
+                        # same messages either way, and a compressing middleware
+                        # strips the `content-length` that would have settled it.
+                        # So the middleware does not guess: it finalizes, and a
+                        # generator that then touches `db.session` gets a
+                        # RuntimeError telling it to open `async with db()`.
+                        #
+                        # A transaction user code owns is the exception: its
+                        # owner still has to commit it, and `__aexit__` finalizes
+                        # it once the app call — and any `yield` dependency
+                        # teardown — has returned.
+                        if not _user_owns_transaction(_request_session.get()):
                             await request_context.close_request_session_for_streaming()
 
-                        for buffered_message in buffered_messages:
-                            await send(buffered_message)
-                        buffered_messages.clear()
-                        await send(message)
+                        await flush(message)
                         streaming_passthrough = True
                         return
 
@@ -713,10 +754,7 @@ def create_middleware_and_session_proxy() -> tuple[type, _DBSessionMetaProtocol]
                     # Finish the transaction and return its connection before
                     # that work begins, while commit failures can still stop 200.
                     await finalize_after_response()
-                    for buffered_message in buffered_messages:
-                        await send(buffered_message)
-                    buffered_messages.clear()
-                    await send(message)
+                    await flush(message)
                     return
 
                 buffered_messages.append(message)
@@ -766,6 +804,18 @@ def create_middleware_and_session_proxy() -> tuple[type, _DBSessionMetaProtocol]
                         "When `max_concurrent` is set, child tasks must access DB via "
                         "`db.connection()` or `db.gather()`; direct `db.session` access "
                         "from child tasks is not throttled."
+                    )
+
+                # A deadline can only be enforced while *awaiting* a checkout, and
+                # this property is synchronous. Silently handing back a session
+                # here would let the first query park on the engine-wide
+                # `pool_timeout` instead of the one the caller asked for.
+                if state.pool_timeout is not None:
+                    raise RuntimeError(
+                        "When `pool_timeout` is set, a new session cannot be created by "
+                        "`db.session`, which is synchronous and so cannot apply the "
+                        "deadline. Use `async with db.connection() as session:` or "
+                        "`db.gather()`, which check the connection out within it."
                     )
 
                 session = _Session(**state.session_args)
@@ -839,7 +889,7 @@ def create_middleware_and_session_proxy() -> tuple[type, _DBSessionMetaProtocol]
                 session = _session.get()
                 if session is None:
                     raise MissingSessionError
-                _mark_request_session_used(session)
+                _check_request_session_open(session)
                 return session
 
         def connection(self, timeout: float | None = None) -> _ConnectionContextManager:
@@ -1012,9 +1062,10 @@ def create_middleware_and_session_proxy() -> tuple[type, _DBSessionMetaProtocol]
             self.request_context = _request_context
             self.request_session_token = None
             self.request_context_token = None
-            self.request_session_used_token = None
-            self.request_session_closed_token = None
             self._finalized = False
+            # Shared by reference with child tasks; see
+            # `_check_request_session_open`.
+            self._closed_for_streaming = False
 
         async def __aenter__(self):
             if not isinstance(_Session, async_sessionmaker):
@@ -1048,14 +1099,19 @@ def create_middleware_and_session_proxy() -> tuple[type, _DBSessionMetaProtocol]
                         with contextlib.suppress(Exception):
                             await session.close()
                         raise
+                # A plain `db()` nested inside `db(multi_sessions=True)` owns the
+                # session it just created, so multi-session mode has to be
+                # suspended for the duration: leaving it set makes `db.session`
+                # keep resolving to the enclosing context's session, and the
+                # nested block then commits an empty session while its writes
+                # ride on — and get rolled back with — the outer one.
+                if _multi_sessions_ctx.get():
+                    self.multi_sessions_token = _multi_sessions_ctx.set(False)
+                    self.multi_state_token = _multi_state.set(None)
                 self.token = _session.set(session)
                 if self.request_context:
                     self.request_context_token = _request_context.set(self)
                     self.request_session_token = _request_session.set(session)
-                    self.request_session_used_token = _request_session_used.set(False)
-                    self.request_session_closed_token = _request_session_closed_for_streaming.set(
-                        False
-                    )
             return type(self)
 
         async def _finalize_regular_session(self, exc_type, exc_value) -> None:
@@ -1076,9 +1132,15 @@ def create_middleware_and_session_proxy() -> tuple[type, _DBSessionMetaProtocol]
                 self._finalized = True
 
         async def close_request_session_for_streaming(self) -> None:
-            await self._finalize_regular_session(None, None)
             if self.request_context:
-                _request_session_closed_for_streaming.set(True)
+                # Marked before finalizing, not after: behind a
+                # `BaseHTTPMiddleware` the body generator runs in another task
+                # and resumes as soon as its chunk is handed over, so it can
+                # reach `db.session` while the close below is still awaiting.
+                # It has to find the explanation rather than a half-closed
+                # session and a bare SQLAlchemy error.
+                self._closed_for_streaming = True
+            await self._finalize_regular_session(None, None)
 
         async def __aexit__(self, exc_type, exc_value, traceback):
             if self.multi_sessions:
@@ -1164,12 +1226,13 @@ def create_middleware_and_session_proxy() -> tuple[type, _DBSessionMetaProtocol]
                 finally:
                     if self.request_context:
                         _request_context.reset(self.request_context_token)
-                        _request_session_closed_for_streaming.reset(
-                            self.request_session_closed_token
-                        )
-                        _request_session_used.reset(self.request_session_used_token)
                         _request_session.reset(self.request_session_token)
                     _session.reset(self.token)
+                    # Only set when this context nested inside a multi-session one.
+                    if self.multi_sessions_token is not None:
+                        _multi_sessions_ctx.reset(self.multi_sessions_token)
+                    if self.multi_state_token is not None:
+                        _multi_state.reset(self.multi_state_token)
 
     # `db` is the `DBSession` class itself; its public API (`session`,
     # `connection`, `gather`, `__call__`) lives on the metaclass. Cast to the

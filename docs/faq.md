@@ -109,10 +109,12 @@ The **parent** task may still use `db.session` directly.
 
 ---
 
-## `RuntimeError: ... commit_on_exit=True cannot use the ... session with a streaming response`
+## `RuntimeError: ... session is closed for streaming response body generation`
 
-You returned a `StreamingResponse` while `commit_on_exit=True` and the request
-session had already been used.
+You reached for `db.session` from a streaming body generator. The request
+session is finalized as soon as the body starts flowing, so it is no longer
+there — and the same happens behind a `@app.middleware("http")`, which makes
+every response look chunked.
 
 **Fix** — own the database lifetime inside the generator, or commit before
 streaming. See [Streaming Responses](guide/streaming.md).

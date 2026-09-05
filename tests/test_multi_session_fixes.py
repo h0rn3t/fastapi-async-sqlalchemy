@@ -178,3 +178,68 @@ async def test_single_session_aexit_warns_cleanup_errors_without_replacing_origi
                 session.rollback = failing_rollback
                 session.close = failing_close
                 raise ValueError("trigger rollback path in __aexit__")
+
+
+# ---------------------------------------------------------------------------
+# A plain `db()` nested inside `db(multi_sessions=True)`
+#
+# The nested context created its own session but left multi-session mode set,
+# so `db.session` kept resolving to the *enclosing* session: the nested block
+# committed an empty session while its writes rode on the outer one — and were
+# rolled back with it.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_nested_plain_context_uses_its_own_session():
+    _db = _make_middleware_and_db()
+
+    async with _db(multi_sessions=True):
+        outer = _db.session
+        async with _db():
+            inner = _db.session
+            assert inner is not outer
+            assert _db.session is inner
+        # Multi-session mode is restored on exit.
+        assert _db.session is outer
+
+
+@pytest.mark.asyncio
+async def test_nested_commit_on_exit_is_not_rolled_back_by_the_outer_context():
+    """The nested block's INSERT must be committed by the nested block itself."""
+    from sqlalchemy import text
+    from sqlalchemy.ext.asyncio import create_async_engine
+
+    from fastapi_async_sqlalchemy import create_middleware_and_session_proxy
+
+    _ensure_modules()
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as conn:
+        await conn.execute(text("CREATE TABLE nested (value INTEGER)"))
+
+    Middleware, _db = create_middleware_and_session_proxy()
+    Middleware(app=None, custom_engine=engine)
+
+    try:
+        async with _db(multi_sessions=True):
+            async with _db(commit_on_exit=True):
+                await _db.session.execute(text("INSERT INTO nested VALUES (1)"))
+
+        async with engine.connect() as conn:
+            rows = (await conn.execute(text("SELECT value FROM nested"))).scalars().all()
+
+        assert rows == [1], "the nested commit landed on the outer session"
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_nested_connection_uses_the_nested_session():
+    """`db.connection()` inside the nested context must borrow, not multiplex."""
+    _db = _make_middleware_and_db()
+
+    async with _db(multi_sessions=True, max_concurrent=2):
+        async with _db():
+            nested = _db.session
+            async with _db.connection() as session:
+                assert session is nested

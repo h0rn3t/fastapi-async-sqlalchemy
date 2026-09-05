@@ -770,3 +770,53 @@ async def test_probe_on_dedicated_engine_survives_saturated_business_pool():
         assert elapsed < 1
     finally:
         await saturate.close()
+
+
+# ---------------------------------------------------------------------------
+# `pool_timeout` in multi-session mode must not be silently bypassed
+#
+# `db.session` is a synchronous property, so it cannot await a checkout and
+# therefore cannot apply the context's deadline. It used to hand back a fresh
+# session anyway, and the first query then parked on the engine-wide
+# `pool_timeout` — the exact wait the caller asked to opt out of.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_direct_session_is_rejected_under_multi_session_pool_timeout():
+    middleware, _db = _make_pair()
+
+    hold = await middleware.engine.connect()
+    await hold.execute(text("SELECT 1"))
+    try:
+        async with _db(multi_sessions=True, pool_timeout=0.01):
+            started = asyncio.get_running_loop().time()
+            with pytest.raises(RuntimeError, match="db.connection|db.gather"):
+                await _db.session.execute(text("SELECT 1"))
+            elapsed = asyncio.get_running_loop().time() - started
+
+        assert elapsed < 0.2, f"waited {elapsed}s — the engine pool_timeout won instead"
+    finally:
+        await hold.close()
+
+
+@pytest.mark.asyncio
+async def test_direct_session_still_works_without_a_context_pool_timeout():
+    """The guard is scoped to `pool_timeout`; plain multi-session use is fine."""
+    _, _db = _make_pair()
+
+    async with _db(multi_sessions=True):
+        result = await _db.session.execute(text("SELECT 5"))
+        assert result.scalar() == 5
+
+
+@pytest.mark.asyncio
+async def test_session_created_by_connection_is_reusable_under_pool_timeout():
+    """A session `db.connection()` already checked out stays reachable."""
+    _, _db = _make_pair()
+
+    async with _db(multi_sessions=True, pool_timeout=5):
+        async with _db.connection() as session:
+            assert _db.session is session
+            result = await _db.session.execute(text("SELECT 6"))
+            assert result.scalar() == 6

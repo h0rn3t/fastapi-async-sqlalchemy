@@ -69,9 +69,10 @@ sent.
 ## Configuring the engine
 
 Pass engine and session options through `engine_args` / `session_args`. These
-are forwarded verbatim to SQLAlchemy's
+are forwarded to SQLAlchemy's
 [`create_async_engine`](https://docs.sqlalchemy.org/en/20/orm/extensions/asyncio.html)
-and `async_sessionmaker`.
+and `async_sessionmaker`. `session_args` may also override the defaults the
+middleware sets itself — `expire_on_commit=False` and `class_`.
 
 ```python
 app.add_middleware(

@@ -152,8 +152,12 @@ the client.
 
 Streaming response body generation has a different lifetime from a normal
 request transaction. Do not rely on the middleware-managed request session to
-stay open while a ``StreamingResponse``/``FileResponse`` yields chunks. Open an
-explicit session inside the generator so the body owns the database lifetime:
+stay open while a ``StreamingResponse``/``FileResponse`` yields chunks — the
+middleware finalizes it as soon as the body starts flowing, and touching it
+afterwards raises an error saying so. The same applies behind any
+``@app.middleware("http")``, which re-emits every response as a chunked one.
+Open an explicit session inside the generator so the body owns the database
+lifetime:
 
 ```python
 from fastapi.responses import StreamingResponse

@@ -30,26 +30,39 @@ async def export():
 The `async with db()` inside the generator makes the session lifetime explicit
 and keeps the session open for the whole body.
 
-## Why not `commit_on_exit=True`?
+## What the middleware does when a body starts flowing
 
-Implicit `commit_on_exit=True` is **not** a safe way to report streaming write
-success. The response may have already started — and early chunks already sent —
-before an unbounded body finishes. A late commit failure cannot un-send those
-chunks.
+As soon as the first chunk of a chunked body arrives, the middleware finalizes
+the request session — committing it when `commit_on_exit=True`, rolling it back
+otherwise — and closes it. That happens *before* the buffered
+`http.response.start` is forwarded, so a failing commit still turns the response
+into a 500 rather than a 200 whose writes were silently lost.
 
-To enforce this, the middleware actively rejects the unsafe combination. If a
-streaming response begins while `commit_on_exit=True` **and** the request
-session was already used, it raises:
+Touching the session after that point raises:
 
 ```text
-RuntimeError: `commit_on_exit=True` cannot use the middleware-managed request
-database session with a streaming response. Use `async with db()` inside the
-streaming generator, or manage the streaming transaction explicitly.
+RuntimeError: The middleware-managed request database session is closed for
+streaming response body generation. Use `async with db()` inside the streaming
+generator to make the session lifetime explicit.
 ```
 
-Similarly, once the request session has been closed for streaming, touching it
-again raises a `RuntimeError` telling you to use `async with db()` inside the
-generator.
+That error is the enforcement: implicit `commit_on_exit=True` is **not** a safe
+way to report streaming write success, because early chunks may already be on
+the wire before an unbounded body finishes, and a late commit failure cannot
+un-send them.
+
+!!! note "Why the middleware does not try to detect 'real' streaming"
+    A chunked body and a finished response cannot be told apart at the ASGI
+    level. `BaseHTTPMiddleware` — what every `@app.middleware("http")` becomes —
+    re-emits even a fully buffered response as one chunk flagged
+    `more_body=True` plus a terminating empty one, and a compressing middleware
+    below it drops the `content-length` that would otherwise have settled the
+    question. So the middleware does not guess: it finalizes, and tells you if
+    you then reach for the session.
+
+A transaction your own code owns — `async with db.session.begin()` in a `yield`
+dependency — is the one exception. It is left alone and finalized by its owner;
+see [`yield` dependencies that own a transaction](http-load.md#yield-dependencies-that-own-a-transaction).
 
 ## If a streaming route needs to write
 

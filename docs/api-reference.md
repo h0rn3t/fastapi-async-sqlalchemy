@@ -82,6 +82,9 @@ with [`DBSessionMeta`](#dbsessionmeta-dbsessiontype).
       been constructed yet.
     - Raises [`MissingSessionError`](#exceptions) if there is no active request
       or `async with db()` context.
+    - Raises `RuntimeError` if it would have to create a session under
+      `db(multi_sessions=True, pool_timeout=...)` — see
+      [the warning below](#db).
 
 ### `db(...)`
 
@@ -120,6 +123,24 @@ with [`DBSessionMeta`](#dbsessionmeta-dbsessiontype).
     async with db(pool_timeout=1):  # fail after 1s, not after 60
         await db.session.execute(text("SELECT 1"))
     ```
+
+    !!! warning "`pool_timeout` with `multi_sessions=True`"
+        In multi-session mode, `db.session` creates a session per task. It is a
+        synchronous property, so it cannot await a checkout and cannot apply the
+        deadline — the first query would park on the engine-wide `pool_timeout`
+        instead. Combining the two therefore raises `RuntimeError` on a
+        `db.session` that would create a new session; use
+        [`db.connection()`](#dbconnectiontimeoutnone) or
+        [`db.gather()`](#await-dbgathercoros-return_exceptionsfalse), which check the
+        connection out within the deadline. Reading `db.session` inside a
+        `db.connection()` block or a `db.gather()` coroutine is fine — it
+        returns the session that block already checked out.
+
+        ```python
+        async with db(multi_sessions=True, pool_timeout=1):
+            async with db.connection() as session:
+                await session.execute(text("SELECT 1"))
+        ```
 
 ### `db.connection(timeout=None)`
 

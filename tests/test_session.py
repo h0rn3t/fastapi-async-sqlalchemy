@@ -42,12 +42,11 @@ async def test_init_required_args_custom_engine(app, db, SQLAlchemyMiddleware):
 @pytest.mark.asyncio
 async def test_init_correct_optional_args(app, db, SQLAlchemyMiddleware):
     engine_args = {"echo": True}
-    # session_args = {"expire_on_commit": False}
 
     SQLAlchemyMiddleware(app, db_url, engine_args=engine_args, session_args={})
 
     async with db():
-        # assert not db.session.expire_on_commit
+        assert not db.session.sync_session.expire_on_commit
         engine = db.session.bind
         assert engine.echo
 
@@ -207,3 +206,42 @@ async def test_concurrent_inserts(app, db, SQLAlchemyMiddleware):
         records = await db.session.execute(text("SELECT * FROM my_model"))
         records = records.scalars().all()
         assert len(records) == 10
+
+
+# ---------------------------------------------------------------------------
+# `session_args` overriding the defaults the middleware sets itself
+#
+# `expire_on_commit` and `class_` were passed to `async_sessionmaker` both
+# explicitly and again through `**session_args`, so supplying either of them —
+# the two most obvious things to configure — failed the middleware's
+# construction with `TypeError: got multiple values for keyword argument`.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_session_args_can_override_expire_on_commit(app, db, SQLAlchemyMiddleware):
+    SQLAlchemyMiddleware(app, db_url, session_args={"expire_on_commit": True})
+
+    async with db():
+        assert db.session.sync_session.expire_on_commit is True
+
+
+@pytest.mark.asyncio
+async def test_session_args_can_override_the_session_class(app, db, SQLAlchemyMiddleware):
+    class CustomSession(AsyncSession):
+        pass
+
+    SQLAlchemyMiddleware(app, db_url, session_args={"class_": CustomSession})
+
+    async with db():
+        assert isinstance(db.session, CustomSession)
+
+
+@pytest.mark.asyncio
+async def test_session_args_defaults_are_kept_when_not_overridden(app, db, SQLAlchemyMiddleware):
+    SQLAlchemyMiddleware(app, db_url, session_args={"autoflush": False})
+
+    async with db():
+        session = db.session
+        assert session.sync_session.expire_on_commit is False
+        assert session.sync_session.autoflush is False

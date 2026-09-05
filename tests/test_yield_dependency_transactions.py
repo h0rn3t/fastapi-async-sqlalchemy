@@ -16,13 +16,20 @@ from sqlalchemy.ext.asyncio import create_async_engine
 from fastapi_async_sqlalchemy import create_middleware_and_session_proxy
 
 
-async def _make_app(tmp_path, dependency_factory, commit_on_exit=False):
+async def _make_app(tmp_path, dependency_factory, commit_on_exit=False, http_middleware=False):
     engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'yield_dep.db'}")
     async with engine.begin() as conn:
         await conn.execute(text("CREATE TABLE entries (value INTEGER)"))
 
     middleware_class, db = create_middleware_and_session_proxy()
     app = FastAPI()
+    if http_middleware:
+        # Registered first so it ends up *inside* the SQLAlchemy middleware:
+        # `add_middleware` prepends, so the last one added is the outermost.
+        @app.middleware("http")
+        async def passthrough(request, call_next):
+            return await call_next(request)
+
     app.add_middleware(middleware_class, custom_engine=engine, commit_on_exit=commit_on_exit)
     return engine, db, app
 
@@ -165,5 +172,83 @@ async def test_plain_dependency_still_finalizes_early(tmp_path):
 
         assert seen["closed"] is True, "autobegun sessions must still finalize early"
         assert await _rows(engine) == [1]
+    finally:
+        await engine.dispose()
+
+
+# ---------------------------------------------------------------------------
+# The same guarantees behind a plain `@app.middleware("http")`
+#
+# That decorator installs a `BaseHTTPMiddleware`, which runs the application in
+# a child task and re-emits even a fully buffered response as a chunk flagged
+# `more_body=True`. The middleware read that as a streaming response and closed
+# the request session mid-request, while the used-session flag — set in the
+# child task's context — never propagated back to the middleware reading it.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_yield_dependency_transaction_commits_behind_http_middleware(tmp_path):
+    """An inner `@app.middleware("http")` must not roll the dependency back."""
+    engine, db, app = await _make_app(tmp_path, None, http_middleware=True)
+
+    async def transaction():
+        async with db.session.begin():
+            yield
+
+    @app.post("/entries", dependencies=[Depends(transaction)])
+    async def create_entry():
+        await db.session.execute(text("INSERT INTO entries VALUES (1)"))
+        return {"ok": True}
+
+    try:
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            response = await client.post("/entries")
+            assert response.status_code == 200
+
+        assert await _rows(engine) == [1], "the dependency's commit was rolled back"
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_commit_on_exit_write_survives_an_inner_http_middleware(tmp_path):
+    """`commit_on_exit` must still commit, and must not report a false stream."""
+    engine, db, app = await _make_app(tmp_path, None, commit_on_exit=True, http_middleware=True)
+
+    @app.post("/entries")
+    async def create_entry():
+        await db.session.execute(text("INSERT INTO entries VALUES (7)"))
+        return {"ok": True}
+
+    try:
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            response = await client.post("/entries")
+            assert response.status_code == 200
+
+        assert await _rows(engine) == [7]
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_rollback_still_happens_behind_an_inner_http_middleware(tmp_path):
+    """A failing route behind the extra middleware must not leave the row."""
+    engine, db, app = await _make_app(tmp_path, None, commit_on_exit=True, http_middleware=True)
+
+    @app.post("/entries")
+    async def create_entry():
+        await db.session.execute(text("INSERT INTO entries VALUES (1)"))
+        raise RuntimeError("route failed")
+
+    try:
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            with pytest.raises(RuntimeError, match="route failed"):
+                await client.post("/entries")
+
+        assert await _rows(engine) == []
     finally:
         await engine.dispose()
