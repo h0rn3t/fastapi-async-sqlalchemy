@@ -10,7 +10,9 @@ readme = "README.md"
 license = "MIT"
 authors = [{ name = "Eugene Shershen", email = "h0rn3t.null@gmail.com" }]
 requires-python = ">=3.12"
-dependencies = ["starlette>=0.40", "SQLAlchemy>=2.0"]
+# `SQLAlchemy[asyncio]` rather than plain `SQLAlchemy`: the asyncio extra is what
+# guarantees greenlet, which SQLAlchemy 2.0 does not install on every platform.
+dependencies = ["starlette>=0.40", "SQLAlchemy[asyncio]>=2.0"]
 classifiers = [
     "Development Status :: 5 - Production/Stable",
     "Environment :: Web Environment",

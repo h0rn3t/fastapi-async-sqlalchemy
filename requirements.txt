@@ -1,5 +1,5 @@
 # Runtime
-SQLAlchemy>=2.0
+SQLAlchemy[asyncio]>=2.0
 starlette>=0.40
 
 # Test
