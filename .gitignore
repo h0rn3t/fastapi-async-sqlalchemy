@@ -1,5 +1,6 @@
 dist/
 build/
+site/
 .vscode/
 venv/
 .idea/
@@ -17,3 +18,4 @@ CLAUDE.md
 .DS_Store
 .kiro/
 test.db
+openspec/

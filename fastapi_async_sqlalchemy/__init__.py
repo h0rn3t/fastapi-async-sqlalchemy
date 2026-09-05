@@ -16,17 +16,15 @@ from fastapi_async_sqlalchemy.middleware import (
 # created by ``create_middleware_and_session_proxy``) so ``isinstance(db,
 # DBSessionMeta)`` and ``type(db) is DBSessionMeta`` keep working as in v0.5.
 if TYPE_CHECKING:
-    from fastapi_async_sqlalchemy._types import DBSessionMeta, DBSessionType
+    from fastapi_async_sqlalchemy._types import DBSessionMeta
 else:
     DBSessionMeta = type(db)
-    DBSessionType = DBSessionMeta
 
 __all__ = [
     "db",
     "SQLAlchemyMiddleware",
     "create_middleware_and_session_proxy",
     "DBSessionMeta",
-    "DBSessionType",
 ]
 
 __version__ = "0.8.0b1"

@@ -1,0 +1,124 @@
+site_name: FastAPI Async SQLAlchemy
+site_description: >-
+  Async SQLAlchemy middleware for FastAPI — a request-scoped AsyncSession
+  proxy with multi-database, pool-throttled concurrency, streaming and engine
+  lifecycle management.
+site_author: Eugene Shershen
+site_url: https://h0rn3t.github.io/fastapi-async-sqlalchemy/
+
+repo_name: h0rn3t/fastapi-async-sqlalchemy
+repo_url: https://github.com/h0rn3t/fastapi-async-sqlalchemy
+edit_uri: edit/main/docs/
+
+copyright: Copyright &copy; Eugene Shershen — MIT License
+
+theme:
+  name: material
+  language: en
+  icon:
+    logo: material/database-sync
+    repo: fontawesome/brands/github
+  favicon: assets/favicon.svg
+  palette:
+    - media: "(prefers-color-scheme)"
+      toggle:
+        icon: material/brightness-auto
+        name: Switch to light mode
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: teal
+      accent: deep orange
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: teal
+      accent: amber
+      toggle:
+        icon: material/weather-night
+        name: Switch to system preference
+  font:
+    text: Inter
+    code: JetBrains Mono
+  features:
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.sections
+    - navigation.top
+    - navigation.tracking
+    - navigation.indexes
+    - navigation.footer
+    - toc.follow
+    - search.suggest
+    - search.highlight
+    - search.share
+    - content.code.copy
+    - content.code.annotate
+    - content.tabs.link
+    - content.tooltips
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/h0rn3t/fastapi-async-sqlalchemy
+    - icon: fontawesome/brands/python
+      link: https://pypi.org/project/fastapi-async-sqlalchemy/
+  generator: false
+
+extra_css:
+  - assets/extra.css
+
+plugins:
+  - search
+
+markdown_extensions:
+  - abbr
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+      title: On this page
+  - pymdownx.betterem
+  - pymdownx.caret
+  - pymdownx.mark
+  - pymdownx.tilde
+  - pymdownx.keys
+  - pymdownx.details
+  - pymdownx.inlinehilite
+  - pymdownx.smartsymbols
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+
+nav:
+  - Home: index.md
+  - Getting Started: getting-started.md
+  - User Guide:
+      - guide/index.md
+      - Sessions & Contexts: guide/sessions.md
+      - Engine Lifecycle: guide/engine-lifecycle.md
+      - Concurrent Queries: guide/concurrency.md
+      - Streaming Responses: guide/streaming.md
+      - Multiple Databases: guide/multi-database.md
+      - SQLAlchemy Events: guide/events.md
+      - Type Hints: guide/type-hints.md
+  - API Reference: api-reference.md
+  - FAQ & Troubleshooting: faq.md

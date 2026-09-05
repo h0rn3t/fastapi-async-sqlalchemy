@@ -7,10 +7,13 @@
 [![pip](https://img.shields.io/pypi/v/fastapi_async_sqlalchemy?color=blue)](https://pypi.org/project/fastapi-async-sqlalchemy/)
 [![Downloads](https://static.pepy.tech/badge/fastapi-async-sqlalchemy)](https://pepy.tech/project/fastapi-async-sqlalchemy)
 [![Updates](https://pyup.io/repos/github/h0rn3t/fastapi-async-sqlalchemy/shield.svg)](https://pyup.io/repos/github/h0rn3t/fastapi-async-sqlalchemy/)
+[![Docs](https://img.shields.io/badge/docs-mkdocs--material-0e8a8a)](https://h0rn3t.github.io/fastapi-async-sqlalchemy/)
 
 ### Description
 
 Provides SQLAlchemy middleware for FastAPI using AsyncSession and async engine.
+
+📖 **Full documentation: <https://h0rn3t.github.io/fastapi-async-sqlalchemy/>**
 
 ### Install
 
@@ -178,7 +181,7 @@ transaction.
 
 #### Type hints for `db`
 
-Use `DBSessionMeta` (or its alias `DBSessionType`) when you need to annotate
+Use `DBSessionMeta` when you need to annotate
 a function or attribute that holds the `db` proxy:
 
 ```python
