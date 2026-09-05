@@ -78,12 +78,12 @@ app.add_middleware(
     SQLAlchemyMiddleware,
     db_url="postgresql+asyncpg://user:pass@localhost:5432/app",
     engine_args={
-        "echo": True,           # log every SQL statement
+        "echo": True,  # log every SQL statement
         "pool_pre_ping": True,  # validate connections before use
-        "pool_size": 5,         # connections kept open
-        "max_overflow": 10,     # extra connections allowed above pool_size
+        "pool_size": 5,  # connections kept open
+        "max_overflow": 10,  # extra connections allowed above pool_size
     },
-    commit_on_exit=True,        # commit the request session on a clean exit
+    commit_on_exit=True,  # commit the request session on a clean exit
 )
 ```
 

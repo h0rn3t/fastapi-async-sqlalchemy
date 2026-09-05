@@ -28,8 +28,10 @@ own session**, tracked and cleaned up by the middleware:
 import asyncio
 from sqlalchemy import text
 
+
 async def run():
     async with db(multi_sessions=True):
+
         async def worker(n: int):
             # each task gets a distinct session
             return await db.session.execute(text(f"SELECT {n}"))
@@ -81,14 +83,12 @@ releases it when the block exits:
 ```python
 async def run():
     async with db(multi_sessions=True, max_concurrent=10):
+
         async def execute_query(query: str):
             async with db.connection() as session:
                 return await session.execute(text(query))
 
-        tasks = [
-            asyncio.create_task(execute_query(f"SELECT {i}"))
-            for i in range(50)
-        ]
+        tasks = [asyncio.create_task(execute_query(f"SELECT {i}")) for i in range(50)]
         await asyncio.gather(*tasks)
 ```
 

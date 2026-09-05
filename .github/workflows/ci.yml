@@ -120,8 +120,10 @@ jobs:
       with:
         python-version: 3.12
 
+    # Pinned so a new ruff release cannot turn main red on its own; keep in
+    # sync with the `ruff-pre-commit` rev in .pre-commit-config.yaml.
     - name: Install dependencies
-      run: pip install ruff
+      run: pip install ruff==0.16.6
 
     - name: Run ruff linter
       run: ruff check .

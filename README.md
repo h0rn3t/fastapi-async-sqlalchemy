@@ -31,7 +31,6 @@ Note that the session object provided by ``db.session`` is based on the Python3.
 each session is linked to the individual request context in which it was created.
 
 ```python
-
 from fastapi import FastAPI
 from fastapi_async_sqlalchemy import SQLAlchemyMiddleware
 from fastapi_async_sqlalchemy import db  # provide access to a database session
@@ -42,11 +41,11 @@ app = FastAPI()
 app.add_middleware(
     SQLAlchemyMiddleware,
     db_url="postgresql+asyncpg://user:user@192.168.88.200:5432/primary_db",
-    engine_args={              # engine arguments example
-        "echo": True,          # print all SQL statements
-        "pool_pre_ping": True, # feature will normally emit SQL equivalent to “SELECT 1” each time a connection is checked out from the pool
-        "pool_size": 5,        # number of connections to keep open at a time
-        "max_overflow": 10,    # number of connections to allow to be opened above pool_size
+    engine_args={  # engine arguments example
+        "echo": True,  # print all SQL statements
+        "pool_pre_ping": True,  # feature will normally emit SQL equivalent to “SELECT 1” each time a connection is checked out from the pool
+        "pool_size": 5,  # number of connections to keep open at a time
+        "max_overflow": 10,  # number of connections to allow to be opened above pool_size
     },
 )
 # Engines created from ``db_url`` are owned by the middleware and are disposed
@@ -57,11 +56,13 @@ app.add_middleware(
 
 foo = table("ms_files", column("id"))
 
+
 # Usage inside of a route
 @app.get("/")
 async def get_files():
     result = await db.session.execute(foo.select())
     return result.fetchall()
+
 
 async def get_db_fetch():
     # It uses the same ``db`` object and use it as a context manager:
@@ -69,10 +70,12 @@ async def get_db_fetch():
         result = await db.session.execute(foo.select())
         return result.fetchall()
 
+
 # Usage inside of a route using a db context
 @app.get("/db_context")
 async def db_context():
     return await get_db_fetch()
+
 
 # Usage outside of a route using a db context
 @app.on_event("startup")
@@ -84,8 +87,8 @@ async def on_startup():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8002)
 
+    uvicorn.run(app, host="0.0.0.0", port=8002)
 ```
 
 #### Engine ownership
@@ -155,6 +158,7 @@ explicit session inside the generator so the body owns the database lifetime:
 ```python
 from fastapi.responses import StreamingResponse
 
+
 @app.get("/export")
 async def export():
     async def rows():
@@ -162,6 +166,7 @@ async def export():
             result = await db.session.stream(foo.select())
             async for row in result:
                 yield f"{row.id}\n".encode()
+
     return StreamingResponse(rows(), media_type="text/plain")
 ```
 
@@ -186,6 +191,7 @@ a function or attribute that holds the `db` proxy:
 
 ```python
 from fastapi_async_sqlalchemy import DBSessionMeta, db
+
 
 def get_db() -> DBSessionMeta:
     return db
@@ -307,6 +313,7 @@ router = APIRouter()
 
 foo = table("ms_files", column("id"))
 
+
 @router.get("/first-db-files")
 async def get_files_from_first_db():
     result = await first_db.session.execute(foo.select())
@@ -322,6 +329,7 @@ async def get_files_from_second_db():
 @router.get("/concurrent-queries")
 async def parallel_select():
     async with first_db(multi_sessions=True, max_concurrent=10):
+
         async def execute_query(query):
             async with first_db.connection() as session:
                 return await session.execute(text(query))

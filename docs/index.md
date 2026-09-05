@@ -45,6 +45,7 @@ app.add_middleware(
     db_url="postgresql+asyncpg://user:pass@localhost:5432/app",
 )
 
+
 @app.get("/ping")
 async def ping():
     result = await db.session.execute(text("SELECT 1"))

@@ -65,8 +65,10 @@ over `db.session`). A session can only do one thing at a time.
 
 ```python
 async with db(multi_sessions=True):
+
     async def worker(n):
         return await db.session.execute(text(f"SELECT {n}"))
+
     await asyncio.gather(*(worker(i) for i in range(5)))
 ```
 

@@ -180,7 +180,7 @@ not in a request and haven't opened `async with db()`.
 
 ```python
 async with db():
-    await db.session.execute(foo.select())   # ✅ fix
+    await db.session.execute(foo.select())  # ✅ fix
 ```
 
 ### `SessionNotInitialisedError`
@@ -197,5 +197,6 @@ The installed version is available as:
 
 ```python
 import fastapi_async_sqlalchemy
+
 fastapi_async_sqlalchemy.__version__
 ```

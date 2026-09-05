@@ -15,6 +15,7 @@ own database lifetime.
 from fastapi.responses import StreamingResponse
 from fastapi_async_sqlalchemy import db
 
+
 @app.get("/export")
 async def export():
     async def rows():
