@@ -116,6 +116,8 @@ nav:
       - Sessions & Contexts: guide/sessions.md
       - Engine Lifecycle: guide/engine-lifecycle.md
       - Concurrent Queries: guide/concurrency.md
+      - Health Checks & Pool Saturation: guide/health-checks.md
+      - HTTP Load & Background Tasks: guide/http-load.md
       - Streaming Responses: guide/streaming.md
       - Multiple Databases: guide/multi-database.md
       - SQLAlchemy Events: guide/events.md

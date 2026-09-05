@@ -37,7 +37,10 @@ class DBSessionMeta(Protocol):
         """Return the ``AsyncSession`` bound to the current async context."""
         ...
 
-    def connection(self) -> AbstractAsyncContextManager[AsyncSession]:
+    def connection(
+        self,
+        timeout: float | None = ...,
+    ) -> AbstractAsyncContextManager[AsyncSession]:
         """Async context manager that yields a throttled session."""
         ...
 
@@ -49,12 +52,17 @@ class DBSessionMeta(Protocol):
         """Pool-aware drop-in replacement for ``asyncio.gather``."""
         ...
 
+    def pool_status(self) -> dict[str, Any]:
+        """Return a live snapshot of the engine's connection pool."""
+        ...
+
     def __call__(
         self,
         session_args: dict[str, Any] | None = ...,
         commit_on_exit: bool = ...,
         multi_sessions: bool = ...,
         max_concurrent: int | None = ...,
+        pool_timeout: float | None = ...,
     ) -> AbstractAsyncContextManager[Any]:
         """Open an explicit session context: ``async with db(): ...``."""
         ...

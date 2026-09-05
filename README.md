@@ -352,3 +352,64 @@ set, child tasks should use ``db.connection()`` or pass coroutine objects to
 ``db.gather()`` so the middleware can own both the session lifetime and the
 semaphore slot. Already-created ``Task`` or ``Future`` objects are rejected by
 throttled ``db.gather()`` because they may have started outside the semaphore.
+
+#### Health checks and pool saturation
+
+A saturated pool doesn't fail — it queues, for the whole engine-wide
+`pool_timeout`. If a readiness probe takes its connection from the same pool as
+business traffic, it queues too, the probe times out, the pod is pulled out of
+load balancing and callers start seeing 503s while the application itself logs
+nothing.
+
+Give the probe its own engine, and give it a deadline:
+
+```python
+from fastapi_async_sqlalchemy import (
+    PoolTimeoutError,
+    SQLAlchemyMiddleware,
+    create_middleware_and_session_proxy,
+    db,
+)
+
+ProbeMiddleware, probe_db = create_middleware_and_session_proxy()
+
+app.add_middleware(
+    SQLAlchemyMiddleware,
+    db_url=DB_URL,
+    engine_args={"pool_size": 20, "max_overflow": 50, "pool_timeout": 60},
+    pool_warn_threshold=0.9,  # WARNING once 90% of the pool is checked out
+)
+app.add_middleware(
+    ProbeMiddleware,
+    db_url=DB_URL,
+    engine_args={"pool_size": 1, "max_overflow": 0, "pool_timeout": 1},
+)
+
+
+@app.get("/health", include_in_schema=False)
+async def health():
+    async with probe_db(pool_timeout=1):  # fail after 1s, not after 60
+        await probe_db.session.execute(text("SELECT 1"))
+    return {"status": "ok"}
+```
+
+`db(pool_timeout=...)` and `db.connection(timeout=...)` raise `PoolTimeoutError`
+instead of parking on the engine deadline, so pool exhaustion can be answered
+with a controlled 503 rather than an opaque 500:
+
+```python
+@app.exception_handler(PoolTimeoutError)
+async def pool_exhausted(request, exc: PoolTimeoutError):
+    return JSONResponse(
+        {"detail": "database connection pool exhausted"},
+        status_code=503,
+        headers={"Retry-After": str(exc.retry_after)},
+    )
+```
+
+`db.pool_status()` returns a live snapshot (`size`, `capacity`, `checked_out`,
+`available`, `saturation`) to export as metrics, and `exclude_paths=["/health"]`
+keeps listed paths out of the request session entirely.
+
+See [Health Checks & Pool Saturation](https://h0rn3t.github.io/fastapi-async-sqlalchemy/guide/health-checks/)
+for the full picture.
