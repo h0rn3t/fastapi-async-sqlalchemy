@@ -256,3 +256,30 @@ def test_middleware_falls_back_to_sqlalchemy_session_when_sqlmodel_missing():
         sys.modules.pop("sqlmodel.ext.asyncio.session", None)
         for name, mod in saved_modules.items():
             sys.modules[name] = mod
+
+
+@pytest.mark.asyncio
+async def test_buffered_response_start_is_forwarded_when_no_body_arrives():
+    """A response that never sends a body still gets its buffered start out.
+
+    The middleware buffers `http.response.start` until the body ends, so an app
+    that returns without ever sending one would otherwise swallow the response
+    whole. It is flushed once the app call returns.
+    """
+    Middleware, _db = create_middleware_and_session_proxy()
+
+    async def start_only_app(scope, receive, send):
+        await send({"type": "http.response.start", "status": 204, "headers": []})
+
+    middleware = Middleware(start_only_app, db_url=DB_URL)
+    sent = []
+
+    async def receive():
+        return {"type": "http.request", "body": b"", "more_body": False}
+
+    async def send(message):
+        sent.append(message)
+
+    await middleware({"type": "http", "path": "/", "headers": []}, receive, send)
+
+    assert sent == [{"type": "http.response.start", "status": 204, "headers": []}]

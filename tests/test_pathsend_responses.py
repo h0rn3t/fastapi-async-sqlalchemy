@@ -300,3 +300,37 @@ async def test_pathsend_commit_failure_still_prevents_a_200(tmp_path):
         "http.response.body",
     ]
     assert sent[0]["status"] == 500
+
+
+@pytest.mark.asyncio
+async def test_pathsend_releases_the_admission_slot(tmp_path):
+    """`max_concurrent_requests` must not hold its slot for background tasks.
+
+    The slot is released when the response body ends, and a pathsend ends it —
+    otherwise a slow background task keeps the next request queueing behind a
+    response that is already fully handed over.
+    """
+    served = tmp_path / "report.csv"
+    served.write_text("value\n1\n")
+    slot_state = {}
+
+    Middleware, db = create_middleware_and_session_proxy()
+    app = FastAPI()
+
+    def record_slot():
+        slot_state["held"] = middleware._request_semaphore.locked()
+
+    @app.get("/file")
+    async def download():
+        await db.session.execute(text("SELECT 1"))
+        return FileResponse(served, background=BackgroundTask(record_slot))
+
+    middleware = Middleware(app, db_url=DB_URL, max_concurrent_requests=1)
+
+    messages = await _call_with_pathsend(middleware)
+
+    assert [m["type"] for m in messages] == [
+        "http.response.start",
+        "http.response.pathsend",
+    ]
+    assert slot_state == {"held": False}, "the admission slot outlived the response"
