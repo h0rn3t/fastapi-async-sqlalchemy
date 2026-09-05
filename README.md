@@ -31,7 +31,6 @@ Note that the session object provided by ``db.session`` is based on the Python3.
 each session is linked to the individual request context in which it was created.
 
 ```python
-
 from fastapi import FastAPI
 from fastapi_async_sqlalchemy import SQLAlchemyMiddleware
 from fastapi_async_sqlalchemy import db  # provide access to a database session
@@ -42,11 +41,11 @@ app = FastAPI()
 app.add_middleware(
     SQLAlchemyMiddleware,
     db_url="postgresql+asyncpg://user:user@192.168.88.200:5432/primary_db",
-    engine_args={              # engine arguments example
-        "echo": True,          # print all SQL statements
-        "pool_pre_ping": True, # feature will normally emit SQL equivalent to “SELECT 1” each time a connection is checked out from the pool
-        "pool_size": 5,        # number of connections to keep open at a time
-        "max_overflow": 10,    # number of connections to allow to be opened above pool_size
+    engine_args={  # engine arguments example
+        "echo": True,  # print all SQL statements
+        "pool_pre_ping": True,  # feature will normally emit SQL equivalent to “SELECT 1” each time a connection is checked out from the pool
+        "pool_size": 5,  # number of connections to keep open at a time
+        "max_overflow": 10,  # number of connections to allow to be opened above pool_size
     },
 )
 # Engines created from ``db_url`` are owned by the middleware and are disposed
@@ -57,11 +56,13 @@ app.add_middleware(
 
 foo = table("ms_files", column("id"))
 
+
 # Usage inside of a route
 @app.get("/")
 async def get_files():
     result = await db.session.execute(foo.select())
     return result.fetchall()
+
 
 async def get_db_fetch():
     # It uses the same ``db`` object and use it as a context manager:
@@ -69,10 +70,12 @@ async def get_db_fetch():
         result = await db.session.execute(foo.select())
         return result.fetchall()
 
+
 # Usage inside of a route using a db context
 @app.get("/db_context")
 async def db_context():
     return await get_db_fetch()
+
 
 # Usage outside of a route using a db context
 @app.on_event("startup")
@@ -84,8 +87,8 @@ async def on_startup():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8002)
 
+    uvicorn.run(app, host="0.0.0.0", port=8002)
 ```
 
 #### Engine ownership
@@ -149,11 +152,16 @@ the client.
 
 Streaming response body generation has a different lifetime from a normal
 request transaction. Do not rely on the middleware-managed request session to
-stay open while a ``StreamingResponse``/``FileResponse`` yields chunks. Open an
-explicit session inside the generator so the body owns the database lifetime:
+stay open while a ``StreamingResponse``/``FileResponse`` yields chunks — the
+middleware finalizes it as soon as the body starts flowing, and touching it
+afterwards raises an error saying so. The same applies behind any
+``@app.middleware("http")``, which re-emits every response as a chunked one.
+Open an explicit session inside the generator so the body owns the database
+lifetime:
 
 ```python
 from fastapi.responses import StreamingResponse
+
 
 @app.get("/export")
 async def export():
@@ -162,6 +170,7 @@ async def export():
             result = await db.session.stream(foo.select())
             async for row in result:
                 yield f"{row.id}\n".encode()
+
     return StreamingResponse(rows(), media_type="text/plain")
 ```
 
@@ -186,6 +195,7 @@ a function or attribute that holds the `db` proxy:
 
 ```python
 from fastapi_async_sqlalchemy import DBSessionMeta, db
+
 
 def get_db() -> DBSessionMeta:
     return db
@@ -307,6 +317,7 @@ router = APIRouter()
 
 foo = table("ms_files", column("id"))
 
+
 @router.get("/first-db-files")
 async def get_files_from_first_db():
     result = await first_db.session.execute(foo.select())
@@ -322,6 +333,7 @@ async def get_files_from_second_db():
 @router.get("/concurrent-queries")
 async def parallel_select():
     async with first_db(multi_sessions=True, max_concurrent=10):
+
         async def execute_query(query):
             async with first_db.connection() as session:
                 return await session.execute(text(query))
@@ -344,3 +356,64 @@ set, child tasks should use ``db.connection()`` or pass coroutine objects to
 ``db.gather()`` so the middleware can own both the session lifetime and the
 semaphore slot. Already-created ``Task`` or ``Future`` objects are rejected by
 throttled ``db.gather()`` because they may have started outside the semaphore.
+
+#### Health checks and pool saturation
+
+A saturated pool doesn't fail — it queues, for the whole engine-wide
+`pool_timeout`. If a readiness probe takes its connection from the same pool as
+business traffic, it queues too, the probe times out, the pod is pulled out of
+load balancing and callers start seeing 503s while the application itself logs
+nothing.
+
+Give the probe its own engine, and give it a deadline:
+
+```python
+from fastapi_async_sqlalchemy import (
+    PoolTimeoutError,
+    SQLAlchemyMiddleware,
+    create_middleware_and_session_proxy,
+    db,
+)
+
+ProbeMiddleware, probe_db = create_middleware_and_session_proxy()
+
+app.add_middleware(
+    SQLAlchemyMiddleware,
+    db_url=DB_URL,
+    engine_args={"pool_size": 20, "max_overflow": 50, "pool_timeout": 60},
+    pool_warn_threshold=0.9,  # WARNING once 90% of the pool is checked out
+)
+app.add_middleware(
+    ProbeMiddleware,
+    db_url=DB_URL,
+    engine_args={"pool_size": 1, "max_overflow": 0, "pool_timeout": 1},
+)
+
+
+@app.get("/health", include_in_schema=False)
+async def health():
+    async with probe_db(pool_timeout=1):  # fail after 1s, not after 60
+        await probe_db.session.execute(text("SELECT 1"))
+    return {"status": "ok"}
+```
+
+`db(pool_timeout=...)` and `db.connection(timeout=...)` raise `PoolTimeoutError`
+instead of parking on the engine deadline, so pool exhaustion can be answered
+with a controlled 503 rather than an opaque 500:
+
+```python
+@app.exception_handler(PoolTimeoutError)
+async def pool_exhausted(request, exc: PoolTimeoutError):
+    return JSONResponse(
+        {"detail": "database connection pool exhausted"},
+        status_code=503,
+        headers={"Retry-After": str(exc.retry_after)},
+    )
+```
+
+`db.pool_status()` returns a live snapshot (`size`, `capacity`, `checked_out`,
+`available`, `saturation`) to export as metrics, and `exclude_paths=["/health"]`
+keeps listed paths out of the request session entirely.
+
+See [Health Checks & Pool Saturation](https://h0rn3t.github.io/fastapi-async-sqlalchemy/guide/health-checks/)
+for the full picture.

@@ -1,5 +1,10 @@
 from typing import TYPE_CHECKING
 
+from fastapi_async_sqlalchemy.exceptions import (
+    MissingSessionError,
+    PoolTimeoutError,
+    SessionNotInitialisedError,
+)
 from fastapi_async_sqlalchemy.middleware import (
     SQLAlchemyMiddleware,
     create_middleware_and_session_proxy,
@@ -25,6 +30,9 @@ __all__ = [
     "SQLAlchemyMiddleware",
     "create_middleware_and_session_proxy",
     "DBSessionMeta",
+    "MissingSessionError",
+    "PoolTimeoutError",
+    "SessionNotInitialisedError",
 ]
 
-__version__ = "0.8.0b1"
+__version__ = "0.8.0"

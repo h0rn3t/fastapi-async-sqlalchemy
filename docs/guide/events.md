@@ -80,6 +80,6 @@ async def create_user(username: str, email: str, full_name: str | None = None):
     async with db():
         user = User(username=username, email=email, full_name=full_name)
         db.session.add(user)
-        await db.session.commit()   # before_insert / after_insert fire on flush
+        await db.session.commit()  # before_insert / after_insert fire on flush
         return {"id": user.id, "username": user.username}
 ```

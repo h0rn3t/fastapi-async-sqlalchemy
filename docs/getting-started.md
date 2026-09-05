@@ -69,21 +69,22 @@ sent.
 ## Configuring the engine
 
 Pass engine and session options through `engine_args` / `session_args`. These
-are forwarded verbatim to SQLAlchemy's
+are forwarded to SQLAlchemy's
 [`create_async_engine`](https://docs.sqlalchemy.org/en/20/orm/extensions/asyncio.html)
-and `async_sessionmaker`.
+and `async_sessionmaker`. `session_args` may also override the defaults the
+middleware sets itself — `expire_on_commit=False` and `class_`.
 
 ```python
 app.add_middleware(
     SQLAlchemyMiddleware,
     db_url="postgresql+asyncpg://user:pass@localhost:5432/app",
     engine_args={
-        "echo": True,           # log every SQL statement
+        "echo": True,  # log every SQL statement
         "pool_pre_ping": True,  # validate connections before use
-        "pool_size": 5,         # connections kept open
-        "max_overflow": 10,     # extra connections allowed above pool_size
+        "pool_size": 5,  # connections kept open
+        "max_overflow": 10,  # extra connections allowed above pool_size
     },
-    commit_on_exit=True,        # commit the request session on a clean exit
+    commit_on_exit=True,  # commit the request session on a clean exit
 )
 ```
 

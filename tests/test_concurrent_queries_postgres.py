@@ -23,7 +23,9 @@ import os
 import uuid
 
 import pytest
+import pytest_asyncio
 from sqlalchemy import text
+from sqlalchemy.pool import NullPool
 
 POSTGRES_URL = os.getenv("POSTGRES_TEST_URL")
 
@@ -38,7 +40,7 @@ def table_name():
     return f"isce_repro_{uuid.uuid4().hex[:8]}"
 
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def setup_table(app, db, SQLAlchemyMiddleware, table_name):
     SQLAlchemyMiddleware(app, db_url=POSTGRES_URL)
     async with db(commit_on_exit=True):
@@ -58,16 +60,28 @@ async def setup_table(app, db, SQLAlchemyMiddleware, table_name):
 
 
 @pytest.mark.asyncio
-async def test_gather_on_same_session_raises_isce(db, table_name, setup_table):
-    """asyncio.gather() on a single AsyncSession must raise isce on asyncpg."""
-    count_stmt = text(f"SELECT COUNT(*) FROM {table_name}")
-    rows_stmt = text(f"SELECT id, name FROM {table_name} LIMIT 10")
+async def test_gather_on_same_session_raises_isce(app, db, SQLAlchemyMiddleware):
+    """asyncio.gather() on a single AsyncSession must raise isce on asyncpg.
+
+    ``NullPool`` is required, not incidental: the race window is the session
+    *provisioning* a new connection. A warm pool hands back an already-open
+    connection without yielding to the event loop, so the second ``execute()``
+    never overlaps the first and no error is raised.
+
+    This test deliberately does not use ``setup_table``: the error is raised
+    before either statement reaches the server, so no table is needed — and
+    the poisoned session cannot be closed afterwards (``close()`` raises
+    ``IllegalStateChangeError``), so it keeps its connection and an
+    ``AccessShareLock``. A ``DROP TABLE`` teardown would block on that lock
+    forever.
+    """
+    SQLAlchemyMiddleware(app, db_url=POSTGRES_URL, engine_args={"poolclass": NullPool})
 
     with pytest.raises(Exception) as exc_info:
         async with db():
             await asyncio.gather(
-                db.session.execute(count_stmt),
-                db.session.execute(rows_stmt),
+                db.session.execute(text("SELECT 1")),
+                db.session.execute(text("SELECT 2")),
             )
 
     error_msg = str(exc_info.value).lower()

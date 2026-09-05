@@ -27,7 +27,8 @@ independent async context — sees its own session. You never pass it around.
 ## Inside a request
 
 When `SQLAlchemyMiddleware` is installed, every HTTP request gets a session
-opened **before** your route runs and finalized **after** it returns:
+opened **before** your route runs. For normal responses it is finalized when the
+complete body is ready, **before** the response is sent and background tasks run:
 
 ```python
 @app.get("/items/{item_id}")
@@ -80,6 +81,10 @@ The finalization rules are:
 
 Anywhere there is no request context — startup/shutdown hooks, CLI scripts,
 background tasks, tests — open a session explicitly:
+
+Starlette background tasks also need their own context: the request session is
+already finalized when they start. See [HTTP Load & Background Tasks](http-load.md)
+for migration details and request concurrency limits.
 
 ```python
 async def get_db_fetch():

@@ -141,7 +141,13 @@ def test_explicit_streaming_read_owns_and_closes_body_session():
     assert closed == ["closed"]
 
 
-def test_implicit_commit_on_exit_streaming_write_is_not_reported_successful():
+def test_streaming_write_commit_failure_is_not_reported_successful():
+    """The request session is finalized before the buffered 200 is released.
+
+    A chunked body cannot be told apart from an inner middleware re-emitting a
+    finished response, so the middleware finalizes rather than guessing. What
+    must survive that is the guarantee a failing commit still costs the 200.
+    """
     SQLAlchemyMiddleware, db = _make_middleware_and_db()
     app = FastAPI()
     app.add_middleware(SQLAlchemyMiddleware, db_url=DB_URL, commit_on_exit=True)
@@ -149,6 +155,13 @@ def test_implicit_commit_on_exit_streaming_write_is_not_reported_successful():
 
     @app.get("/stream-write")
     async def stream_write():
+        session = db.session
+
+        async def failing_commit():
+            raise SQLAlchemyError("commit failed before the body was released")
+
+        session.commit = failing_commit
+
         async def body():
             await db.session.execute(text("CREATE TABLE unsafe_stream (value INTEGER)"))
             await db.session.execute(text("INSERT INTO unsafe_stream VALUES (1)"))
@@ -167,6 +180,34 @@ def test_implicit_commit_on_exit_streaming_write_is_not_reported_successful():
         message["type"] == "http.response.start" and message["status"] == 200
         for message in messages
     )
+
+
+def test_streaming_generator_cannot_use_the_request_session_after_the_body_starts():
+    """Once the body flows, the request session is gone and says so."""
+    SQLAlchemyMiddleware, db = _make_middleware_and_db()
+    app = FastAPI()
+    app.add_middleware(SQLAlchemyMiddleware, db_url=DB_URL, commit_on_exit=True)
+    errors = []
+
+    @app.get("/stream")
+    async def stream():
+        async def body():
+            yield b"first\n"
+            try:
+                await db.session.execute(text("SELECT 1"))
+            except RuntimeError as exc:
+                errors.append(str(exc))
+            yield b"second\n"
+
+        return StreamingResponse(body(), media_type="text/plain")
+
+    with TestClient(app) as client:
+        response = client.get("/stream")
+
+    assert response.status_code == 200
+    assert response.text == "first\nsecond\n"
+    assert len(errors) == 1
+    assert "closed for streaming" in errors[0]
 
 
 def test_non_database_streaming_closes_request_session_before_response_start(monkeypatch):

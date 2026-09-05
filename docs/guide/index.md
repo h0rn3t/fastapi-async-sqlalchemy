@@ -32,6 +32,15 @@ need — each page is self-contained.
 
     [:octicons-arrow-right-24: Read](concurrency.md)
 
+-   :material-heart-pulse:{ .lg .middle } __Health Checks & Pool Saturation__
+
+    ---
+
+    Why a saturated pool takes the readiness probe down with it, and the
+    fail-fast deadline, pool metrics and excluded paths that stop it.
+
+    [:octicons-arrow-right-24: Read](health-checks.md)
+
 -   :material-download-network:{ .lg .middle } __Streaming Responses__
 
     ---
