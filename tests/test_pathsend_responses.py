@@ -9,6 +9,8 @@ request's database connection stayed checked out for the whole background task.
 Per the ASGI spec, pathsend ends the response body.
 """
 
+import asyncio
+
 import pytest
 from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse
@@ -20,6 +22,10 @@ from starlette.background import BackgroundTask
 from fastapi_async_sqlalchemy import create_middleware_and_session_proxy
 
 DB_URL = "sqlite+aiosqlite://"
+
+# Only ever reached when the background task does *not* run concurrently with
+# finalization, so a generous value costs nothing on the passing path.
+_BACKGROUND_WAIT_SECONDS = 5
 
 
 def _add_passthrough_middleware(app):
@@ -186,10 +192,19 @@ async def test_pathsend_commits_before_the_response_is_forwarded(tmp_path):
 # ---------------------------------------------------------------------------
 
 
-async def _pathsend_ordering(tmp_path, *, inner_middleware, commit_on_exit=False):
+async def _pathsend_ordering(
+    tmp_path, *, inner_middleware, commit_on_exit=False, await_background=False
+):
+    """Record the finalization/send/background ordering for one pathsend request.
+
+    With *await_background* the commit blocks until the background task has run,
+    which turns the race into a deterministic observation: either the background
+    task can run while finalization is in flight, or the wait times out.
+    """
     served = tmp_path / "report.csv"
     served.write_text("value\n1\n")
     events = []
+    background_ran = asyncio.Event()
 
     Middleware, db = create_middleware_and_session_proxy()
     app = FastAPI()
@@ -197,6 +212,7 @@ async def _pathsend_ordering(tmp_path, *, inner_middleware, commit_on_exit=False
     def delete_file():
         events.append("background")
         served.unlink()
+        background_ran.set()
 
     @app.get("/file")
     async def download():
@@ -205,6 +221,11 @@ async def _pathsend_ordering(tmp_path, *, inner_middleware, commit_on_exit=False
 
         async def tracking_commit():
             events.append("commit")
+            if await_background:
+                try:
+                    await asyncio.wait_for(background_ran.wait(), _BACKGROUND_WAIT_SECONDS)
+                except TimeoutError:
+                    events.append("background did not run during the commit")
             await original_commit()
 
         session.commit = tracking_commit
@@ -245,16 +266,20 @@ async def test_pathsend_background_races_finalization_behind_an_inner_middleware
     guarantee that a failing commit still stops the response — see the test
     below. The connection is therefore released late here, and a background
     task that deletes the served file can win the race.
-    """
-    events = await _pathsend_ordering(tmp_path, inner_middleware=True, commit_on_exit=True)
-    send_event = next(event for event in events if event.startswith("send("))
 
-    # The ordering the middleware still controls.
-    assert events[0] == "commit", events
-    # The ordering that is lost: the background task no longer follows the send.
-    # Should this ever start passing, the limitation documented in
-    # docs/guide/http-load.md is gone and should be removed with this assertion.
-    assert events.index("background") < events.index(send_event), events
+    Which side wins is genuinely timing-dependent, so the commit here waits for
+    the background task rather than asserting one outcome of the coin flip.
+    Should that wait ever time out, the limitation documented in
+    docs/guide/http-load.md is gone and should be removed with this test.
+    """
+    events = await _pathsend_ordering(
+        tmp_path, inner_middleware=True, commit_on_exit=True, await_background=True
+    )
+
+    # The commit still leads — that ordering the middleware controls — but the
+    # background task runs during it, so the file is already gone by the time
+    # the server receives the path it is supposed to open.
+    assert events == ["commit", "background", "send(exists=False)"], events
 
 
 @pytest.mark.asyncio
