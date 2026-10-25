@@ -158,7 +158,11 @@ def create_middleware_and_session_proxy() -> tuple[type, _DBSessionMetaProtocol]
         commit_on_exit: bool = False
         session_args: dict = field(default_factory=dict)
         semaphore: asyncio.Semaphore | None = None
+        max_concurrent: int | None = None
         slot_holders: set[asyncio.Task] = field(default_factory=set)
+        # Slot holders currently parked in `db.gather()`, waiting on children
+        # that need a slot of their own.
+        gathering_slot_holders: set[asyncio.Task] = field(default_factory=set)
         waiters: set[asyncio.Task] = field(default_factory=set)
         closing: bool = False
         pool_timeout: float | None = None
@@ -176,20 +180,29 @@ def create_middleware_and_session_proxy() -> tuple[type, _DBSessionMetaProtocol]
         returns the slot to the queue, so no connection is leaked.
         """
         status: dict[str, Any] | None = None
+        reported_timeout: float | None = timeout
+        deadline = asyncio.timeout(timeout)
         try:
-            async with asyncio.timeout(timeout):
+            async with deadline:
                 await session.connection()
             return
         except TimeoutError as exc:
+            # A driver's own connect timeout is a `TimeoutError` too, but it
+            # says nothing about pool capacity — only our deadline does.
+            if not deadline.expired():
+                raise
             caught: BaseException = exc
         except sa_exc.TimeoutError as exc:
-            # The engine-wide `pool_timeout` fired first — report it the same way.
+            # The engine-wide `pool_timeout` fired first — report it the same
+            # way, but with the deadline that actually expired.
             caught = exc
+            engine_timeout = getattr(getattr(_Session_engine, "pool", None), "_timeout", None)
+            reported_timeout = engine_timeout if isinstance(engine_timeout, int | float) else None
 
         if _Session_engine is not None:
             with contextlib.suppress(Exception):
                 status = _pool_status(_Session_engine)
-        raise PoolTimeoutError(timeout=timeout, pool_status=status) from caught
+        raise PoolTimeoutError(timeout=reported_timeout, pool_status=status) from caught
 
     def _cleanup_error(error: BaseException) -> str:
         return f"{type(error).__name__}: {error}"
@@ -202,6 +215,14 @@ def create_middleware_and_session_proxy() -> tuple[type, _DBSessionMetaProtocol]
 
         details = "; ".join(_cleanup_error(error) for error in errors)
         raise RuntimeError(f"Session cleanup failed with {len(errors)} errors: {details}")
+
+    def _warn_suppressed_cleanup_errors(errors: list[BaseException]) -> None:
+        for error in errors:
+            warnings.warn(
+                "Suppressed session cleanup error because another exception is already "
+                f"being raised: {_cleanup_error(error)}",
+                stacklevel=3,
+            )
 
     def _check_request_session_open(session: AsyncSession) -> None:
         """Refuse access to a request session the middleware has already closed.
@@ -240,21 +261,25 @@ def create_middleware_and_session_proxy() -> tuple[type, _DBSessionMetaProtocol]
         errors: list[BaseException] = []
 
         # Rollback/commit must surface errors to caller; otherwise writes can be lost silently.
-        if session.is_active:
-            if exc is not None:
+        if exc is not None:
+            if session.is_active:
                 try:
                     await session.rollback()
                 except BaseException as rollback_error:
                     errors.append(rollback_error)
-            elif commit_on_exit:
+        elif commit_on_exit:
+            # Not gated on `is_active`: a transaction deactivated by a failed
+            # flush that user code caught and swallowed is inactive, and skipping
+            # the commit would report success for writes about to be discarded.
+            # Committing it makes SQLAlchemy raise `PendingRollbackError`.
+            try:
+                await session.commit()
+            except BaseException as commit_error:
+                errors.append(commit_error)
                 try:
-                    await session.commit()
-                except BaseException as commit_error:
-                    errors.append(commit_error)
-                    try:
-                        await session.rollback()
-                    except BaseException as rollback_error:
-                        errors.append(rollback_error)
+                    await session.rollback()
+                except BaseException as rollback_error:
+                    errors.append(rollback_error)
 
         try:
             await session.close()
@@ -437,6 +462,11 @@ def create_middleware_and_session_proxy() -> tuple[type, _DBSessionMetaProtocol]
                     self._state.slot_holders.discard(task)
                 if self._acquired_slot and self._semaphore:
                     self._semaphore.release()
+                # Reset so a reused instance cannot release the slot twice and
+                # silently raise the `max_concurrent` ceiling.
+                self._acquired_slot = False
+                self._owns_session = False
+                self._session = None
 
     class _SQLAlchemyMiddleware:
         __test__ = False
@@ -481,11 +511,13 @@ def create_middleware_and_session_proxy() -> tuple[type, _DBSessionMetaProtocol]
                 raise ValueError("`max_concurrent_requests` must be a positive integer.")
             if not math.isfinite(request_queue_timeout) or request_queue_timeout <= 0:
                 raise ValueError("`request_queue_timeout` must be finite and greater than 0.")
+            self.max_concurrent_requests = max_concurrent_requests
             self._request_semaphore = (
                 asyncio.Semaphore(max_concurrent_requests)
                 if max_concurrent_requests is not None
                 else None
             )
+            self._request_semaphore_loop: asyncio.AbstractEventLoop | None = None
             self.request_queue_timeout = request_queue_timeout
 
             if not custom_engine and not db_url:
@@ -513,17 +545,49 @@ def create_middleware_and_session_proxy() -> tuple[type, _DBSessionMetaProtocol]
                 engine = create_async_engine(db_url, **engine_args)
 
             self.engine = engine
-            _Session_engine = engine
-            # Merge before the call, not at it: passing `class_` or
-            # `expire_on_commit` through `session_args` as well as explicitly
-            # raises `TypeError: got multiple values for keyword argument`.
-            _Session = async_sessionmaker(
-                engine,
-                **{"class_": DefaultAsyncSession, "expire_on_commit": False, **session_args},
-            )
+            self.session_args = session_args
+            self._bind()
 
             if pool_warn_threshold is not None:
                 self._install_pool_warning(pool_warn_threshold)
+
+        def _bind(self) -> None:
+            """Point the session proxy at this middleware's engine."""
+            nonlocal _Session, _Session_engine
+
+            # Merge before the call, not at it: passing `class_` or
+            # `expire_on_commit` through `session_args` as well as explicitly
+            # raises `TypeError: got multiple values for keyword argument`.
+            # Built before either binding is assigned, so bad `session_args`
+            # cannot leave the proxy pointing at an engine nobody owns.
+            session_factory = async_sessionmaker(
+                self.engine,
+                **{"class_": DefaultAsyncSession, "expire_on_commit": False, **self.session_args},
+            )
+            _Session_engine = self.engine
+            _Session = session_factory
+
+        def _rebind_for_startup(self) -> None:
+            """Restore what a previous lifespan shutdown tore down.
+
+            Starlette builds the middleware stack once, so ``__init__`` does not
+            run again when the same app goes through another lifespan cycle (a
+            second ``with TestClient(app):``, an embedding server restarting
+            it). Shutdown disposed the engine — which stays usable, its pool is
+            simply recreated — and unbound the proxy; without this every request
+            of the next cycle would raise ``SessionNotInitialisedError``.
+            """
+            if _Session_engine is None:
+                self._bind()
+                self._engine_disposed = False
+            elif _Session_engine is not self.engine:
+                raise RuntimeError(
+                    "This SQLAlchemy session proxy was bound to another engine while the "
+                    "application was shut down. Use create_middleware_and_session_proxy() "
+                    "for independent apps or databases."
+                )
+            if self.pool_warn_threshold is not None and self._pool_warn_listener is None:
+                self._install_pool_warning(self.pool_warn_threshold)
 
         def _install_pool_warning(self, threshold: float) -> None:
             """Log a throttled WARNING once the pool passes *threshold* capacity.
@@ -594,6 +658,25 @@ def create_middleware_and_session_proxy() -> tuple[type, _DBSessionMetaProtocol]
                     _Session_engine = None
                     _Session = None
 
+        def _admission_semaphore(self) -> asyncio.Semaphore | None:
+            """Return the request-admission semaphore for the running loop.
+
+            An ``asyncio.Semaphore`` binds to the first loop it ever waits on and
+            raises ``RuntimeError`` on any other. The middleware outlives a loop
+            whenever the same app is served again (a new ``TestClient``, a
+            restarted embedding server), so it gets a fresh semaphore per loop;
+            permits held on a finished loop are released into the old one.
+            """
+            if self.max_concurrent_requests is None:
+                return None
+            loop = asyncio.get_running_loop()
+            if self._request_semaphore_loop is not loop:
+                # The one built in `__init__` is unbound, so the first loop keeps it.
+                if self._request_semaphore_loop is not None:
+                    self._request_semaphore = asyncio.Semaphore(self.max_concurrent_requests)
+                self._request_semaphore_loop = loop
+            return self._request_semaphore
+
         async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
             if scope["type"] == "lifespan":
 
@@ -622,7 +705,15 @@ def create_middleware_and_session_proxy() -> tuple[type, _DBSessionMetaProtocol]
                     else:
                         await send(message)
 
-                await self.app(scope, receive, send_with_disposal)
+                async def receive_with_rebind() -> Message:
+                    message = await receive()
+                    # Before the app's own startup handlers run, so they can
+                    # already use `db`.
+                    if message["type"] == "lifespan.startup":
+                        self._rebind_for_startup()
+                    return message
+
+                await self.app(scope, receive_with_rebind, send_with_disposal)
                 return
 
             if scope["type"] != "http":
@@ -636,7 +727,7 @@ def create_middleware_and_session_proxy() -> tuple[type, _DBSessionMetaProtocol]
                 await self.app(scope, receive, send)
                 return
 
-            semaphore = self._request_semaphore
+            semaphore = self._admission_semaphore()
             if semaphore is None:
                 await self._handle_http(scope, receive, send)
                 return
@@ -999,6 +1090,39 @@ def create_middleware_and_session_proxy() -> tuple[type, _DBSessionMetaProtocol]
                         item.close()
                 raise
 
+            # A task holding a `db.connection()` slot keeps it while it waits for
+            # these children, which need slots of their own. Once every slot is
+            # held by such a waiter nothing can ever be released, so refuse the
+            # call that would complete that cycle instead of hanging forever.
+            caller = asyncio.current_task()
+            holds_slot = (
+                state is not None
+                and semaphore is not None
+                and caller is not None
+                and caller in state.slot_holders
+            )
+            if holds_slot:
+                assert state is not None and state.max_concurrent is not None
+                assert caller is not None
+                if len(state.gathering_slot_holders) + 1 >= state.max_concurrent:
+                    for item in coros:
+                        item.close()
+                    raise RuntimeError(
+                        "db.gather() would deadlock: every one of the "
+                        f"{state.max_concurrent} `max_concurrent` slots is held by a task "
+                        "waiting on db.gather(), and its coroutines need a slot of their "
+                        "own. Call db.gather() outside the `db.connection()` block."
+                    )
+                state.gathering_slot_holders.add(caller)
+
+            try:
+                return await self._gather_throttled(coros, return_exceptions)
+            finally:
+                if holds_slot:
+                    assert state is not None
+                    state.gathering_slot_holders.discard(caller)
+
+        async def _gather_throttled(self, coros: list, return_exceptions: bool):
             started = [False] * len(coros)
 
             async def _throttled(index, coro):
@@ -1046,8 +1170,12 @@ def create_middleware_and_session_proxy() -> tuple[type, _DBSessionMetaProtocol]
             pool_timeout: float | None = None,
             _request_context: bool = False,
         ):
-            if max_concurrent is not None and max_concurrent < 1:
-                raise ValueError("`max_concurrent` must be greater than 0.")
+            if max_concurrent is not None and (
+                isinstance(max_concurrent, bool)
+                or not isinstance(max_concurrent, int)
+                or max_concurrent < 1
+            ):
+                raise ValueError("`max_concurrent` must be greater than 0 and an integer.")
             if pool_timeout is not None and (not math.isfinite(pool_timeout) or pool_timeout <= 0):
                 raise ValueError("`pool_timeout` must be greater than 0 and finite.")
 
@@ -1085,10 +1213,17 @@ def create_middleware_and_session_proxy() -> tuple[type, _DBSessionMetaProtocol]
                         commit_on_exit=self.commit_on_exit,
                         session_args=self.session_args,
                         semaphore=semaphore,
+                        max_concurrent=self.max_concurrent,
                         pool_timeout=self.pool_timeout,
                     )
                 )
             else:
+                # A reused instance must not inherit the previous block's
+                # "already finalized" flag, or its new session is never closed.
+                self._finalized = False
+                self._closed_for_streaming = False
+                self.multi_sessions_token = None
+                self.multi_state_token = None
                 session = _Session(**self.session_args)
                 if self.pool_timeout is not None:
                     # __aexit__ never runs when __aenter__ raises, so the
@@ -1142,6 +1277,65 @@ def create_middleware_and_session_proxy() -> tuple[type, _DBSessionMetaProtocol]
                 self._closed_for_streaming = True
             await self._finalize_regular_session(None, None)
 
+        @staticmethod
+        async def _drain_multi_state(
+            state: _MultiSessionState,
+            cleanup_errors: list[BaseException],
+        ) -> None:
+            """Stop the context's child tasks and wait for their own cleanup."""
+            # Cancel tasks parked on the semaphore first. They aren't in
+            # task_sessions yet (entry happens after acquire), so the
+            # task_sessions sweep below would miss them — they would
+            # silently take a freed slot, create a session post-closing,
+            # and race with finalisation.
+            waiting_tasks = [
+                task for task in state.waiters if task is not state.parent_task and not task.done()
+            ]
+            for task in waiting_tasks:
+                task.cancel()
+            if waiting_tasks:
+                await asyncio.gather(*waiting_tasks, return_exceptions=True)
+            state.waiters.clear()
+
+            pending_tasks = [
+                task
+                for task in state.task_sessions
+                if task is not state.parent_task and not task.done()
+            ]
+            for task in pending_tasks:
+                task.cancel()
+            if pending_tasks:
+                await asyncio.gather(*pending_tasks, return_exceptions=True)
+
+            if state.cleanup_tasks:
+                cleanup_results = await asyncio.gather(
+                    *state.cleanup_tasks,
+                    return_exceptions=True,
+                )
+                cleanup_errors.extend(
+                    result for result in cleanup_results if isinstance(result, BaseException)
+                )
+
+        @staticmethod
+        async def _finalize_tracked(
+            state: _MultiSessionState,
+            exc: BaseException | None,
+            cleanup_errors: list[BaseException],
+        ) -> None:
+            # Claim all remaining sessions to prevent concurrent cleanup
+            sessions_to_finalize = list(state.tracked)
+            state.tracked.clear()
+
+            for session in sessions_to_finalize:
+                try:
+                    await _finalize_session(
+                        session,
+                        commit_on_exit=state.commit_on_exit,
+                        exc=exc,
+                    )
+                except BaseException as caught_cleanup_error:
+                    cleanup_errors.append(caught_cleanup_error)
+
         async def __aexit__(self, exc_type, exc_value, traceback):
             if self.multi_sessions:
                 state = _multi_state.get()
@@ -1149,68 +1343,29 @@ def create_middleware_and_session_proxy() -> tuple[type, _DBSessionMetaProtocol]
                     state.closing = True
                 _multi_sessions_ctx.reset(self.multi_sessions_token)
                 cleanup_errors: list[BaseException] = []
-                if state is not None:
-                    # Cancel tasks parked on the semaphore first. They aren't in
-                    # task_sessions yet (entry happens after acquire), so the
-                    # task_sessions sweep below would miss them — they would
-                    # silently take a freed slot, create a session post-closing,
-                    # and race with finalisation.
-                    waiting_tasks = [
-                        task
-                        for task in state.waiters
-                        if task is not state.parent_task and not task.done()
-                    ]
-                    for task in waiting_tasks:
-                        task.cancel()
-                    if waiting_tasks:
-                        await asyncio.gather(*waiting_tasks, return_exceptions=True)
-                    state.waiters.clear()
+                exc = exc_value if exc_type is not None else None
+                try:
+                    if state is not None:
+                        await self._drain_multi_state(state, cleanup_errors)
+                except BaseException as drain_error:
+                    # Cancelled (or failed) while waiting on child tasks. The
+                    # remaining sessions are still finalized below — rolled
+                    # back, as the block did not finish — or their connections
+                    # would stay checked out for good.
+                    if exc is None:
+                        exc = drain_error
+                    raise
+                finally:
+                    try:
+                        if state is not None:
+                            await self._finalize_tracked(state, exc, cleanup_errors)
+                    finally:
+                        _multi_state.reset(self.multi_state_token)
+                    if exc is not None:
+                        _warn_suppressed_cleanup_errors(cleanup_errors)
 
-                    pending_tasks = [
-                        task
-                        for task in state.task_sessions
-                        if task is not state.parent_task and not task.done()
-                    ]
-                    for task in pending_tasks:
-                        task.cancel()
-                    if pending_tasks:
-                        await asyncio.gather(*pending_tasks, return_exceptions=True)
-
-                    if state.cleanup_tasks:
-                        cleanup_results = await asyncio.gather(
-                            *state.cleanup_tasks,
-                            return_exceptions=True,
-                        )
-                        cleanup_errors.extend(
-                            result
-                            for result in cleanup_results
-                            if isinstance(result, BaseException)
-                        )
-                    exc = exc_value if exc_type is not None else None
-                    # Claim all remaining sessions to prevent concurrent cleanup
-                    sessions_to_finalize = list(state.tracked)
-                    state.tracked.clear()
-
-                    for session in sessions_to_finalize:
-                        try:
-                            await _finalize_session(
-                                session,
-                                commit_on_exit=state.commit_on_exit,
-                                exc=exc,
-                            )
-                        except BaseException as caught_cleanup_error:
-                            cleanup_errors.append(caught_cleanup_error)
-                _multi_state.reset(self.multi_state_token)
-
-                if cleanup_errors:
-                    if exc_type is None:
-                        _raise_cleanup_errors(cleanup_errors)
-                    for cleanup_exc in cleanup_errors:
-                        warnings.warn(
-                            "Suppressed session cleanup error because another exception is already "
-                            f"being raised: {_cleanup_error(cleanup_exc)}",
-                            stacklevel=2,
-                        )
+                if exc is None:
+                    _raise_cleanup_errors(cleanup_errors)
             else:
                 try:
                     try:
