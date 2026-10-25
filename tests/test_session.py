@@ -184,8 +184,11 @@ async def test_multi_sessions(app, db, SQLAlchemyMiddleware):
 
 
 @pytest.mark.asyncio
-async def test_concurrent_inserts(app, db, SQLAlchemyMiddleware):
-    SQLAlchemyMiddleware(app, db_url=db_url)
+async def test_concurrent_inserts(app, db, SQLAlchemyMiddleware, tmp_path):
+    # A file database, not `db_url`: in-memory SQLite runs on a StaticPool, so
+    # the ten sessions would share one connection and each one's close would
+    # roll back whatever the others had not committed yet.
+    SQLAlchemyMiddleware(app, db_url=f"sqlite+aiosqlite:///{tmp_path / 'inserts.db'}")
 
     async with db(multi_sessions=True, commit_on_exit=True):
         await db.session.execute(
@@ -203,6 +206,9 @@ async def test_concurrent_inserts(app, db, SQLAlchemyMiddleware):
         result_ids = await asyncio.gather(*tasks)
         assert len(result_ids) == 10
 
+    # Each child commits from a cleanup task scheduled when it finishes, which
+    # may not have run yet inside the block; leaving it awaits all of them.
+    async with db():
         records = await db.session.execute(text("SELECT * FROM my_model"))
         records = records.scalars().all()
         assert len(records) == 10

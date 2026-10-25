@@ -246,16 +246,19 @@ async def test_cleanup_callback_without_running_loop_warns():
         async with db(multi_sessions=True):
 
             async def child_task():
-                session = db.session
+                # Patched only around the synchronous `db.session` access: a
+                # patch spanning awaits also breaks anyio, which looks up the
+                # running loop itself, and hangs the TestClient portal.
+                with patch(
+                    "asyncio.get_running_loop",
+                    side_effect=RuntimeError("No running event loop"),
+                ):
+                    session = db.session
                 await session.execute(text("SELECT 1"))
                 return "done"
 
-            with patch(
-                "asyncio.get_running_loop",
-                side_effect=RuntimeError("No running event loop"),
-            ):
-                task = asyncio.create_task(child_task())
-                await task
+            task = asyncio.create_task(child_task())
+            await task
 
         return {"done": True}
 

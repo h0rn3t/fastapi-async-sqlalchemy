@@ -269,17 +269,27 @@ async def test_pathsend_background_races_finalization_behind_an_inner_middleware
 
     Which side wins is genuinely timing-dependent, so the commit here waits for
     the background task rather than asserting one outcome of the coin flip.
-    Should that wait ever time out, the limitation documented in
-    docs/guide/http-load.md is gone and should be removed with this test.
+    Newer Starlette releases no longer run the background task before the outer
+    response completes, so there the wait times out and the ordering holds; the
+    limitation documented in docs/guide/http-load.md applies only to older ones.
     """
     events = await _pathsend_ordering(
         tmp_path, inner_middleware=True, commit_on_exit=True, await_background=True
     )
 
-    # The commit still leads — that ordering the middleware controls — but the
-    # background task runs during it, so the file is already gone by the time
-    # the server receives the path it is supposed to open.
-    assert events == ["commit", "background", "send(exists=False)"], events
+    if "background did not run during the commit" in events:
+        # Starlette defers the background task: the guaranteed ordering.
+        assert events == [
+            "commit",
+            "background did not run during the commit",
+            "send(exists=True)",
+            "background",
+        ], events
+    else:
+        # The commit still leads — that ordering the middleware controls — but
+        # the background task runs during it, so the file is already gone by
+        # the time the server receives the path it is supposed to open.
+        assert events == ["commit", "background", "send(exists=False)"], events
 
 
 @pytest.mark.asyncio
