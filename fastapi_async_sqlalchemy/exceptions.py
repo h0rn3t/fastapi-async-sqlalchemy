@@ -28,7 +28,7 @@ class SessionNotInitialisedError(Exception):
 
     def __init__(self):
         msg = """
-        Session not initialised! Ensure that DBSessionMiddleware has been initialised before
+        Session not initialised! Ensure that SQLAlchemyMiddleware has been initialised before
         attempting database access.
         """
 

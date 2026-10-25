@@ -77,7 +77,9 @@ Accessing the finalized request session through `db.session` raises an error
 explaining that an explicit `async with db()` is required.
 
 !!! warning "`@app.middleware("http")` below this middleware breaks the ordering"
-    `BaseHTTPMiddleware` runs the application in a child task and hands
+    This applies to older Starlette releases; newer ones defer the background
+    task until the outer response has completed, and the ordering holds.
+    There, `BaseHTTPMiddleware` runs the application in a child task and hands
     response messages to a queue, so that task reaches `self.background()` as
     soon as the message is queued — while the outer middleware is still
     awaiting the commit. Background tasks then run *concurrently* with
